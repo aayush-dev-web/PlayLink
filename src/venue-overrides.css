@@ -1,0 +1,355 @@
+.venue-photo {
+  background-position: center!important;
+  background-size: cover!important;
+}
+
+.icon-cricket-mask {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask: url('/sports/cricket-icon.png') center/contain no-repeat;
+  mask: url('/sports/cricket-icon.png') center/contain no-repeat;
+}
+
+.icon-futsal-mask {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask: url('/sports/footballground-icon.png') center/contain no-repeat;
+  mask: url('/sports/footballground-icon.png') center/contain no-repeat;
+}
+
+.venue-card.is-selected {
+  border-color: #7dcea0;
+  box-shadow: 0 0 0 2px rgba(32,180,90,.12);
+}
+
+.venue-photo::before,
+.venue-photo::after,
+.venue-photo-cricket::before,
+.venue-photo-cricket::after {
+  display: none!important;
+}
+
+.welcome-court-art {
+  width: 40%;
+  background: linear-gradient(90deg,#f7fbfb 0%,rgba(247,251,251,.25) 42%,rgba(247,251,251,0) 100%),url('/sports/fut1.png') center/cover!important;
+  clip-path: none;
+}
+
+.welcome-court-art::before,
+.welcome-court-art::after {
+  content: none!important;
+}
+
+.google-map-panel {
+  position: static!important;
+  top: auto!important;
+}
+
+.map-provider-mark {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: #117b47;
+  background: #e6f7ed;
+}
+
+.map-panel-heading > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.venue-map-canvas {
+  display: block;
+  height: 330px!important;
+  border: 0;
+}
+
+.venue-directions-panel {
+  margin: 4px 10px 8px;
+  padding: 9px;
+  border: 1px solid #e5edf2;
+  border-radius: 7px;
+  background: #f9fbfd;
+}
+
+.venue-directions-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.venue-directions-heading > span {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: #138048;
+  background: #e4f6eb;
+}
+
+.venue-directions-heading b,
+.venue-directions-heading small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.venue-directions-heading b {
+  color: #173957;
+  font-size: 9px;
+}
+
+.venue-directions-heading small {
+  margin-top: 3px;
+  color: #7a8d9d;
+  font-size: 8px;
+}
+
+.venue-direction-modes {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.venue-direction-modes button,
+.venue-use-location {
+  min-height: 29px;
+  padding: 4px 6px;
+  border: 1px solid #e1e8ee;
+  border-radius: 5px;
+  color: #516c83;
+  background: #fff;
+  font-size: 8px;
+  cursor: pointer;
+}
+
+.venue-direction-modes button.active,
+.venue-direction-modes button:hover,
+.venue-use-location:hover {
+  border-color: #95d5ab;
+  color: #0c7843;
+  background: #effaf3;
+}
+
+.venue-use-location {
+  width: 100%;
+  margin-top: 8px;
+  color: #138048;
+  font-weight: 700;
+}
+
+.venue-directions-message {
+  margin: 7px 0 0;
+  color: #8d5b1d;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.map-size-toggle {
+  min-height: 29px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid #dfe8ee;
+  border-radius: 6px;
+  color: #234762;
+  background: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.map-size-toggle:hover {
+  border-color: #9bd6ad;
+  color: #0e7d47;
+  background: #f5fbf7;
+}
+
+.map-screen-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  border: 0;
+  background: rgba(5,20,34,.42);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.google-map-panel.is-expanded {
+  position: fixed!important;
+  z-index: 1001;
+  top: 50%!important;
+  left: 50%;
+  width: min(1080px,calc(100vw - 56px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  transform: translate(-50%,-50%);
+  box-shadow: 0 20px 70px rgba(5,24,41,.3);
+}
+
+.google-map-panel.is-expanded .map-panel-heading {
+  min-height: 56px;
+  padding-inline: 15px;
+}
+
+.google-map-panel.is-expanded .map-panel-heading b {
+  font-size: 12px;
+}
+
+.google-map-panel.is-expanded .map-panel-heading small {
+  font-size: 9px;
+}
+
+.google-map-panel.is-expanded .venue-map-canvas {
+  height: min(58vh,620px)!important;
+  min-height: 340px;
+}
+
+.google-map-panel.is-expanded .google-map-venue-list {
+  grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
+  gap: 6px;
+  padding: 10px 14px 4px;
+}
+
+.google-map-panel.is-expanded .google-map-venue-list button {
+  min-height: 34px;
+  padding-inline: 9px;
+  font-size: 10px;
+}
+
+.google-map-panel.is-expanded .venue-directions-panel {
+  margin: 8px 14px;
+  padding: 12px;
+}
+
+.google-map-panel.is-expanded .venue-directions-heading b {
+  font-size: 11px;
+}
+
+.google-map-panel.is-expanded .venue-directions-heading small,
+.google-map-panel.is-expanded .venue-direction-modes button,
+.google-map-panel.is-expanded .venue-use-location {
+  font-size: 9px;
+}
+
+.google-map-panel.is-expanded .map-legend {
+  flex-direction: row;
+  justify-content: space-between;
+  padding-inline: 14px;
+  font-size: 9px;
+}
+
+.venue-topbar-user {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #304d68;
+  font-size: 9px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.venue-topbar-user > span {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  color: #0b7544;
+  background: #ddf5e7;
+  font-size: 10px;
+}
+
+.venue-sidebar-count,
+.dashboard-side-count {
+  margin-left: auto;
+  color: #b8f4cf;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.venue-modal-directions-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 14px 0 0;
+  color: #147c47;
+  font-size: 10px;
+}
+
+@media (max-width: 700px) {
+  .venue-topbar-user {
+    width: 30px;
+    overflow: hidden;
+    font-size: 0;
+  }
+
+  .venue-topbar-user > span {
+    width: 27px;
+    height: 27px;
+  }
+
+  .welcome-court-art {
+    width: 35%;
+  }
+
+  .venue-dashboard-aside .google-map-panel {
+    grid-column: 1/-1;
+  }
+
+  .venue-map-canvas {
+    height: 270px!important;
+  }
+
+  .map-size-toggle {
+    width: 31px;
+    padding-inline: 0;
+  }
+
+  .map-size-toggle > span {
+    display: none;
+  }
+
+  .google-map-panel.is-expanded {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+
+  .google-map-panel.is-expanded .venue-map-canvas {
+    height: 54dvh!important;
+    min-height: 260px;
+  }
+}
+
+@media (max-width: 480px) {
+  .favorite-venues-heading {
+    padding: 14px;
+  }
+
+  .favorite-venues-heading h1 {
+    font-size: 21px;
+  }
+
+  .favorite-venues-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .favorite-venue-image {
+    height: 170px;
+  }
+}

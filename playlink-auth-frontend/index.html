@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PlayLink — Welcome</title><link rel="stylesheet" href="styles.css">
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <section class="brand-panel">
+      <a class="brand" href="index.html" aria-label="PlayLink home"><img class="brand-full-logo" src="assets/playlink-logo.png" alt="PlayLink — Find Courts. Join Games. Play Together."></a>
+      <div class="brand-copy"><span class="eyebrow">YOUR GAME. YOUR PEOPLE.</span><h1>Find courts.<br>Join games.<br><span class="green">Play together.</span></h1><p>Connect with players, discover teams, and make your next game happen.</p></div>
+      
+    </section>
+    <section class="form-panel">
+      <div class="form-wrap">
+        <div class="mobile-brand"><img class="brand-full-logo" src="assets/playlink-logo.png" alt="PlayLink — Find Courts. Join Games. Play Together."></div>
+        <div class="form-heading"><span class="eyebrow">WELCOME TO PLAYLINK</span><h2>Create your account</h2><p>Join your local sports community.</p></div>
+        <form id="registerForm" novalidate>
+          <label for="fullName">Full name</label><input id="fullName" name="fullName" autocomplete="name" placeholder="e.g. Binaya Adhikari" required>
+          <label for="username">Username</label><input id="username" name="username" autocomplete="username" placeholder="Choose a unique username" minlength="3" maxlength="24" required><small class="field-hint">3–24 characters; letters, numbers, and underscores.</small>
+          <label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+          <label for="phone">Phone number <span class="optional-label">(optional)</span></label><input id="phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="e.g. +977-9812345678">
+          <label for="password">Password</label><div class="password-wrap"><input id="password" name="password" type="password" autocomplete="new-password" placeholder="Create a password" minlength="8" required><button class="show-password" type="button" data-toggle="password">Show</button></div>
+          <label for="confirmPassword">Confirm password</label><div class="password-wrap"><input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" placeholder="Enter password again" required><button class="show-password" type="button" data-toggle="confirmPassword">Show</button></div>
+          <button class="primary-btn" type="submit">Create account <span aria-hidden="true">→</span></button>
+          <div class="divider"><span>or continue with</span></div>
+          <button class="google-btn" type="button" data-demo="Google sign-up"><span class="google-g">G</span> Continue with Google</button>
+          <p class="form-message" id="formMessage" role="status" aria-live="polite"></p>
+        </form>
+        <p class="switch-copy">Already have an account? <a href="login.html">Log in</a></p>
+        <p class="legal">By continuing, you agree to PlayLink’s <a href="#">Terms</a> and <a href="#">Privacy Policy</a>.</p>
+      </div>
+    </section>
+  </main><script src="app.js"></script>
+</body>
+</html>

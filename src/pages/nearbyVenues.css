@@ -1,0 +1,33 @@
+.nearby-venue-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px 0;
+  color: #173b59;
+  font: 700 10px 'Manrope', sans-serif;
+  text-decoration: none;
+}
+
+.nearby-venue-title:hover {
+  color: #168b45;
+  text-decoration: underline;
+}
+
+.nearby-venue-title svg {
+  flex: 0 0 auto;
+}
+
+.nearby-venue-select {
+  padding-top: 6px;
+}
+
+.nearby-venue-info > small {
+  white-space: normal;
+}
+
+.nearby-open-directions {
+  width: 100%;
+  margin: 4px 0 10px;
+  text-decoration: none;
+}
