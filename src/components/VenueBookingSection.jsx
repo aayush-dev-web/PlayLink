@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import Icon from './Icon.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { supabase } from '../auth/supabase.js'
+import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
 
 function todayValue() {
   const date = new Date()
@@ -19,13 +20,14 @@ function Stars({ rating }) {
 
 export default function VenueBookingSection({ venue }) {
   const { user } = useAuth()
+  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
   const [bookings, setBookings] = useState([])
   const [reviews, setReviews] = useState([])
   const [loading, setLoading] = useState(Boolean(user))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [form, setForm] = useState({ date: todayValue(), start_time: '', end_time: '', sport: venue.sport === 'Cricket' ? 'Cricket' : 'Futsal' })
+  const [form, setForm] = useState({ date: todayValue(), start_time: '', end_time: '', sport: venue.sport === 'Both' ? 'Futsal' : venue.sport })
   const [reviewForm, setReviewForm] = useState({ booking_id: '', rating: 5, review: '' })
 
   useEffect(() => {
@@ -147,12 +149,12 @@ export default function VenueBookingSection({ venue }) {
           <label>Date<input type="date" min={todayValue()} required value={form.date} onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))} /></label>
           <label>From<input type="time" required value={form.start_time} onChange={(event) => setForm((current) => ({ ...current, start_time: event.target.value }))} /></label>
           <label>To<input type="time" required value={form.end_time} onChange={(event) => setForm((current) => ({ ...current, end_time: event.target.value }))} /></label>
-          {venue.sport === 'Both' && <label>Sport<select value={form.sport} onChange={(event) => setForm((current) => ({ ...current, sport: event.target.value }))}><option>Futsal</option><option>Cricket</option></select></label>}
+          {(venue.sport === 'Both' || !sportOptions.some((item) => item.name === venue.sport)) && <label>Sport<select value={form.sport} onChange={(event) => setForm((current) => ({ ...current, sport: event.target.value }))}>{(venue.sport === 'Both' ? sportOptions : sportOptions.filter((item) => item.name === venue.sport)).map((item) => <option key={item.slug}>{item.name}</option>)}</select></label>}
           <button className="button button-primary" type="submit" disabled={submitting}><Icon name="calendar" size={15} />{submitting ? 'Sending request…' : 'Ask to book'}</button>
         </form>}
 
       {message && <p className="venue-booking-feedback success" role="status">{message}</p>}
-      {error && <p className="venue-booking-feedback error" role="alert">{error}</p>}
+      {(error || sportsError) && <p className="venue-booking-feedback error" role="alert">{error || sportsError}</p>}
       {user && <div className="venue-player-bookings">
         <h4>Your booking requests</h4>
         {loading ? <p className="venue-booking-muted">Loading your requests…</p> : bookings.length

@@ -9,14 +9,19 @@ import VenuePhotoPicker from '../components/VenuePhotoPicker.jsx'
 import useActivityNotifications from '../hooks/useActivityNotifications.js'
 import { uploadVenuePhoto, validateVenuePhoto } from '../data/venuePhotos.js'
 import { getVenueImage } from '../data/venueImages.js'
+import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
+import LiveCricketScores from '../components/LiveCricketScores.jsx'
+import LiveScoresPage from './LiveScoresPage.jsx'
 
 const ownerNavigation = [
   { href: '/owner', label: 'Dashboard', icon: 'home' },
   { href: '/owner/bookings', label: 'Bookings', icon: 'calendar' },
   { href: '/owner/inbox', label: 'Inbox', icon: 'message' },
+  { href: '/messages', label: 'PlayLink Team', icon: 'message' },
   { href: '/owner/schedule', label: 'Schedule', icon: 'clock' },
   { href: '/owner/venue', label: 'Your Venue', icon: 'venue' },
   { href: '/owner/reviews', label: 'Reviews', icon: 'star' },
+  { href: '/owner/scores', label: 'Live scores', icon: 'chart' },
   { href: '/owner/settings', label: 'Settings', icon: 'settings' },
 ]
 const weekdayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -52,7 +57,7 @@ function OwnerShell({ path, children, user, venue, activity, notificationsOpen, 
         <Brand light href="/owner" />
         <div className="owner-venue-identity">
           <span className="owner-venue-thumb"><img src={getVenueImage(venue)} alt="" /></span>
-          <span><b>{venue?.name || 'Add your venue'} {venue?.is_active && <i aria-label="Active venue">✓</i>}</b><small>{venue?.sport === 'Both' ? 'Futsal & Cricket' : venue?.sport ? `${venue.sport} Venue` : 'Venue owner workspace'}</small></span>
+          <span><b>{venue?.name || 'Add your venue'} {venue?.is_active && <i aria-label="Active venue">✓</i>}</b><small>{venue?.sport === 'Both' ? 'Multiple sports' : venue?.sport ? `${venue.sport} Venue` : 'Venue owner workspace'}</small></span>
           <Icon name="chevron-right" size={15} />
         </div>
         <nav className="owner-nav" aria-label="Venue owner workspace">
@@ -428,9 +433,11 @@ function OwnerDashboard() {
           <aside className="owner-overview-aside">
             <section className="owner-panel owner-upcoming-panel"><div className="owner-panel-heading"><div><h2>Upcoming Bookings</h2><p>{todayBookings.length} today</p></div><Link to="/owner/bookings">View all</Link></div><BookingList bookings={allBookings.filter((booking) => new Date(booking.starts_at).getTime() >= Date.now() && booking.status !== 'cancelled').slice(0, 5)} venues={workspace.venues} compact /></section>
             <section className="owner-panel owner-quick-actions"><div className="owner-panel-heading"><h2>Quick Actions</h2></div><Link to="/owner/bookings?new=1"><Icon name="calendar" size={16} /><span><b>Add New Booking</b><small>Manually create a booking</small></span></Link><Link to="/owner/schedule"><Icon name="clock" size={16} /><span><b>View Full Schedule</b><small>Check upcoming availability</small></span></Link><Link to="/owner/venue"><Icon name="settings" size={16} /><span><b>Manage Venue</b><small>Update details and pricing</small></span></Link></section>
+            <LiveCricketScores variant="owner" />
           </aside>
         </div>
       </section>}
+      {path === '/owner/scores' && <section className="owner-page"><LiveScoresPage embedded backHref="/owner" /></section>}
       {path === '/owner/bookings' && <section className="owner-page">
         <PageHeading title="Bookings" description="Review requests, manage confirmed games, and add bookings made offline." action={<button className="owner-primary-button" type="button" onClick={() => setShowBookingForm((open) => !open)}><Icon name="add" size={16} /> Add new booking</button>} />
         {showBookingForm && <BookingForm venues={workspace.venues} onCancel={() => setShowBookingForm(false)} onSave={saveBooking} />}
@@ -454,18 +461,28 @@ function OwnerDashboard() {
 }
 
 function BookingChart({ bookings, venues }) {
+  const { sports } = usePlayLinkSports()
+  const seriesColors = ['#20b45a', '#3289ed', '#a36dda', '#ed9851', '#ec6d85', '#1b9a9c']
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => {
     const date = new Date()
     date.setDate(date.getDate() - 6 + index)
     const dayBookings = bookings.filter((booking) => new Date(booking.starts_at).toDateString() === date.toDateString() && booking.status !== 'cancelled')
-    const countForSport = (sport) => dayBookings.filter((booking) => {
+    const counts = sports.map(({ name }) => dayBookings.filter((booking) => {
       const venue = venues.find((item) => item.id === booking.venue_id)
-      return (booking.sport || (venue?.sport === 'Both' ? '' : venue?.sport)) === sport
-    }).length
-    return { date, futsal: countForSport('Futsal'), cricket: countForSport('Cricket') }
-  }), [bookings, venues])
-  const maximum = Math.max(4, ...days.map((day) => Math.max(day.futsal, day.cricket)))
-  return <div className="owner-chart" role="img" aria-label={`Futsal and cricket bookings over the past seven days: ${days.map((day) => `${day.futsal} futsal and ${day.cricket} cricket on ${day.date.toLocaleDateString('en', { weekday: 'short' })}`).join(', ')}`}><div className="owner-chart-axis">{[maximum, Math.ceil(maximum * .75), Math.ceil(maximum * .5), Math.ceil(maximum * .25), 0].map((tick, index) => <span key={`${tick}-${index}`}>{tick}</span>)}</div><div className="owner-chart-bars">{days.map((day) => <div className="owner-chart-day" key={day.date.toISOString()}><div className="owner-chart-columns"><span className="futsal" style={{ height: `${day.futsal ? Math.max(3, day.futsal / maximum * 100) : 0}%` }} title={`${day.futsal} futsal bookings`} /><span className="cricket" style={{ height: `${day.cricket ? Math.max(3, day.cricket / maximum * 100) : 0}%` }} title={`${day.cricket} cricket bookings`} /></div><b>{day.date.toLocaleDateString('en-NP', { month: 'short', day: 'numeric' })}</b><small>{day.date.toLocaleDateString('en-NP', { weekday: 'short' })}</small></div>)}</div><div className="owner-chart-legend"><span><i className="futsal" />Futsal</span><span><i className="cricket" />Cricket</span></div></div>
+      return (booking.sport || (venue?.sport === 'Both' ? '' : venue?.sport)) === name
+    }).length)
+    return { date, counts }
+  }), [bookings, sports, venues])
+  const maximum = Math.max(4, ...days.flatMap((day) => day.counts))
+  const summary = days.map((day) => `${day.counts.join(', ')} bookings on ${day.date.toLocaleDateString('en', { weekday: 'short' })}`).join('; ')
+  return <div className="owner-chart" role="img" aria-label={`Bookings by sport over the past seven days (${sports.map((item) => item.name).join(', ')}): ${summary}`}>
+    <div className="owner-chart-axis">{[maximum, Math.ceil(maximum * .75), Math.ceil(maximum * .5), Math.ceil(maximum * .25), 0].map((tick, index) => <span key={`${tick}-${index}`}>{tick}</span>)}</div>
+    <div className="owner-chart-bars">{days.map((day) => <div className="owner-chart-day" key={day.date.toISOString()}>
+      <div className="owner-chart-columns">{day.counts.map((count, sportIndex) => <span key={sports[sportIndex].slug} style={{ height: `${count ? Math.max(3, count / maximum * 100) : 0}%`, backgroundColor: seriesColors[sportIndex % seriesColors.length] }} title={`${count} ${sports[sportIndex].name} bookings`} />)}</div>
+      <b>{day.date.toLocaleDateString('en-NP', { month: 'short', day: 'numeric' })}</b><small>{day.date.toLocaleDateString('en-NP', { weekday: 'short' })}</small>
+    </div>)}</div>
+    <div className="owner-chart-legend">{sports.map((sport, index) => <span key={sport.slug}><i style={{ backgroundColor: seriesColors[index % seriesColors.length] }} />{sport.name}</span>)}</div>
+  </div>
 }
 
 function VenueUsage({ venues, bookings }) {
@@ -474,7 +491,7 @@ function VenueUsage({ venues, bookings }) {
     const booked = bookings.filter((booking) => booking.venue_id === venue.id).reduce((total, booking) => total + Math.max(0, (new Date(booking.ends_at) - new Date(booking.starts_at)) / 3600000), 0)
     const hours = Math.min(40, Math.round(booked))
     const percent = Math.round(hours / 40 * 100)
-    return <article className="owner-usage-item" key={venue.id}><span className={`owner-usage-ring ${index ? 'blue' : ''}`} style={{ '--usage': `${percent * 3.6}deg` }}><b>{percent}%</b></span><strong>{venue.sport === 'Both' ? 'Futsal & Cricket' : `${venue.sport} venue`}</strong><small>{hours} / 40 hours</small></article>
+    return <article className="owner-usage-item" key={venue.id}><span className={`owner-usage-ring ${index ? 'blue' : ''}`} style={{ '--usage': `${percent * 3.6}deg` }}><b>{percent}%</b></span><strong>{venue.sport === 'Both' ? 'Multiple sports' : `${venue.sport} venue`}</strong><small>{hours} / 40 hours</small></article>
   })}</div>
 }
 
@@ -488,15 +505,16 @@ function BookingList({ bookings, venues, compact = false, onStatus }) {
 }
 
 function BookingForm({ venues, onCancel, onSave }) {
-  const [form, setForm] = useState({ venue_id: venues[0]?.id || '', sport: venues[0]?.sport === 'Cricket' ? 'Cricket' : 'Futsal', customer_name: '', customer_contact: '', date: todayInputValue(), start_time: '09:00', end_time: '10:00', status: 'confirmed', notes: '' })
+  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
+  const [form, setForm] = useState({ venue_id: venues[0]?.id || '', sport: venues[0]?.sport === 'Both' ? 'Futsal' : venues[0]?.sport || 'Futsal', customer_name: '', customer_contact: '', date: todayInputValue(), start_time: '09:00', end_time: '10:00', status: 'confirmed', notes: '' })
   function change(key) { return (event) => setForm((current) => ({ ...current, [key]: event.target.value })) }
   function changeVenue(event) {
     const venue = venues.find((item) => item.id === event.target.value)
-    setForm((current) => ({ ...current, venue_id: event.target.value, sport: venue?.sport === 'Cricket' ? 'Cricket' : 'Futsal' }))
+    setForm((current) => ({ ...current, venue_id: event.target.value, sport: venue?.sport === 'Both' ? 'Futsal' : venue?.sport || 'Futsal' }))
   }
   const selectedVenue = venues.find((venue) => venue.id === form.venue_id)
   if (!venues.length) return <div className="owner-form-card"><EmptyState icon="venue" title="Add a venue before booking" text="Each booking needs a venue to be linked to." action={<Link className="owner-primary-button" to="/owner/venue">Add venue details</Link>} /></div>
-  return <form className="owner-form-card owner-booking-form" onSubmit={(event) => { event.preventDefault(); onSave(form) }}><div className="owner-panel-heading"><div><h2>New booking</h2><p>Manually record a venue reservation.</p></div><button className="owner-icon-button" type="button" aria-label="Close booking form" onClick={onCancel}><Icon name="close" size={16} /></button></div><div className="owner-form-grid"><label>Venue<select value={form.venue_id} onChange={changeVenue} required>{venues.map((venue) => <option value={venue.id} key={venue.id}>{venue.name}</option>)}</select></label><label>Sport<select value={form.sport} onChange={change('sport')} disabled={selectedVenue?.sport !== 'Both'}>{(selectedVenue?.sport === 'Both' ? ['Futsal', 'Cricket'] : [form.sport]).map((sport) => <option key={sport}>{sport}</option>)}</select></label><label>Customer or team name<input value={form.customer_name} onChange={change('customer_name')} required minLength="2" maxLength="120" placeholder="e.g. Valley Cricket Club" /></label><label>Contact <span>(optional)</span><input value={form.customer_contact} onChange={change('customer_contact')} maxLength="120" placeholder="Phone or email" /></label><label>Date<input type="date" value={form.date} onChange={change('date')} required /></label><label>Start time<input type="time" value={form.start_time} onChange={change('start_time')} required /></label><label>End time<input type="time" value={form.end_time} onChange={change('end_time')} required /></label><label>Booking status<select value={form.status} onChange={change('status')}><option value="confirmed">Confirmed</option><option value="pending">Pending</option></select></label><label className="owner-form-span">Notes <span>(optional)</span><textarea value={form.notes} onChange={change('notes')} maxLength="500" rows="2" placeholder="Any booking notes" /></label></div><p className="owner-form-hint"><Icon name="info" size={13} />Manually recorded bookings do not notify the customer.</p><div className="owner-form-actions"><button className="owner-outline-button" type="button" onClick={onCancel}>Cancel</button><button className="owner-primary-button" type="submit"><Icon name="check" size={15} /> Save booking</button></div></form>
+  return <form className="owner-form-card owner-booking-form" onSubmit={(event) => { event.preventDefault(); onSave(form) }}><div className="owner-panel-heading"><div><h2>New booking</h2><p>Manually record a venue reservation.</p></div><button className="owner-icon-button" type="button" aria-label="Close booking form" onClick={onCancel}><Icon name="close" size={16} /></button></div><div className="owner-form-grid"><label>Venue<select value={form.venue_id} onChange={changeVenue} required>{venues.map((venue) => <option value={venue.id} key={venue.id}>{venue.name}</option>)}</select></label><label>Sport<select value={form.sport} onChange={change('sport')} disabled={selectedVenue?.sport !== 'Both'}>{(selectedVenue?.sport === 'Both' ? sportOptions.map((item) => item.name) : [form.sport]).map((sport) => <option key={sport}>{sport}</option>)}</select></label><label>Customer or team name<input value={form.customer_name} onChange={change('customer_name')} required minLength="2" maxLength="120" placeholder="e.g. Valley Cricket Club" /></label><label>Contact <span>(optional)</span><input value={form.customer_contact} onChange={change('customer_contact')} maxLength="120" placeholder="Phone or email" /></label><label>Date<input type="date" value={form.date} onChange={change('date')} required /></label><label>Start time<input type="time" value={form.start_time} onChange={change('start_time')} required /></label><label>End time<input type="time" value={form.end_time} onChange={change('end_time')} required /></label><label>Booking status<select value={form.status} onChange={change('status')}><option value="confirmed">Confirmed</option><option value="pending">Pending</option></select></label><label className="owner-form-span">Notes <span>(optional)</span><textarea value={form.notes} onChange={change('notes')} maxLength="500" rows="2" placeholder="Any booking notes" /></label></div>{sportsError && <p className="owner-form-hint" role="alert">{sportsError}</p>}<p className="owner-form-hint"><Icon name="info" size={13} />Manually recorded bookings do not notify the customer.</p><div className="owner-form-actions"><button className="owner-outline-button" type="button" onClick={onCancel}>Cancel</button><button className="owner-primary-button" type="submit"><Icon name="check" size={15} /> Save booking</button></div></form>
 }
 
 function ScheduleForm({ venues, weekday, onCancel, onSave }) {
@@ -506,6 +524,7 @@ function ScheduleForm({ venues, weekday, onCancel, onSave }) {
 }
 
 function VenuePage({ venues, onSave, onToggleActive }) {
+  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
   const location = useLocation()
   const [selectedId, setSelectedId] = useState(venues[0]?.id || '')
   const [form, setForm] = useState(null)
@@ -531,7 +550,7 @@ function VenuePage({ venues, onSave, onToggleActive }) {
     {venues.length > 1 && <label className="owner-venue-select">Choose venue<select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>{venues.map((venue) => <option value={venue.id} key={venue.id}>{venue.name}</option>)}</select></label>}
     <form className="owner-panel owner-venue-form" onSubmit={async (event) => { event.preventDefault(); const saved = await onSave(form, selectedId || undefined, photoFile); if (saved?.id) setSelectedId(saved.id) }}>
       <div className="owner-venue-form-top"><div><span className="owner-form-kicker">VENUE PROFILE</span><h2>{selectedVenue ? 'Update venue details' : 'Add your venue'}</h2><p>This information belongs to your venue owner account.</p></div>{selectedVenue && <span className={`owner-listing-state ${selectedVenue.is_active ? 'active' : 'paused'}`}><i />{selectedVenue.is_active ? 'Listing active' : 'Listing paused'}</span>}</div>
-      <div className="owner-form-grid"><label>Venue name<input value={form.name} onChange={changeVenueName} required minLength="2" maxLength="120" placeholder="Your venue’s name" /></label><label>Sport<select value={form.sport} onChange={change('sport')}><option>Futsal</option><option>Cricket</option><option>Both</option></select></label><label>District / area<input value={form.area} onChange={change('area')} required minLength="2" maxLength="160" placeholder="Kathmandu, Lalitpur, or Bhaktapur" /></label><label>Street address<input value={form.address} onChange={change('address')} maxLength="240" placeholder="Full address" /></label><label>Hourly rate (Rs)<input type="number" min="0" step="50" value={form.price_per_hour} onChange={change('price_per_hour')} required /></label><label>Latitude <span>(optional)</span><input type="number" min="-90" max="90" step="any" value={form.latitude} onChange={change('latitude')} placeholder="27.7152" /></label><label>Longitude <span>(optional)</span><input type="number" min="-180" max="180" step="any" value={form.longitude} onChange={change('longitude')} placeholder="85.3128" /></label><label className="owner-form-span">Google Maps link<input type="url" value={form.maps_url} onChange={change('maps_url')} placeholder="https://www.google.com/maps/search/..." /></label><div className="owner-form-span"><VenuePhotoPicker id="owner-venue-photo" file={photoFile} currentUrl={form.image_url} onChange={setPhotoFile} /></div><label className="owner-form-span">About this venue<textarea rows="4" maxLength="1000" value={form.description} onChange={change('description')} placeholder="Tell players about your facilities, surface, changing rooms, or lights." /></label></div>
+      <div className="owner-form-grid"><label>Venue name<input value={form.name} onChange={changeVenueName} required minLength="2" maxLength="120" placeholder="Your venue’s name" /></label><label>Sport<select value={form.sport} onChange={change('sport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select></label><label>District / area<input value={form.area} onChange={change('area')} required minLength="2" maxLength="160" placeholder="Kathmandu, Lalitpur, or Bhaktapur" /></label><label>Street address<input value={form.address} onChange={change('address')} maxLength="240" placeholder="Full address" /></label><label>Hourly rate (Rs)<input type="number" min="0" step="50" value={form.price_per_hour} onChange={change('price_per_hour')} required /></label><label>Latitude <span>(optional)</span><input type="number" min="-90" max="90" step="any" value={form.latitude} onChange={change('latitude')} placeholder="27.7152" /></label><label>Longitude <span>(optional)</span><input type="number" min="-180" max="180" step="any" value={form.longitude} onChange={change('longitude')} placeholder="85.3128" /></label><label className="owner-form-span">Google Maps link<input type="url" value={form.maps_url} onChange={change('maps_url')} placeholder="https://www.google.com/maps/search/..." /></label><div className="owner-form-span"><VenuePhotoPicker id="owner-venue-photo" file={photoFile} currentUrl={form.image_url} onChange={setPhotoFile} /></div><label className="owner-form-span">About this venue<textarea className="fixed-scroll-textarea" rows="4" maxLength="1000" value={form.description} onChange={change('description')} placeholder="Tell players about your facilities, surface, changing rooms, or lights." /></label></div>{sportsError && <p className="owner-form-hint" role="alert">{sportsError}</p>}
       {form.maps_url && <a className="owner-maps-preview" href={form.maps_url} target="_blank" rel="noreferrer"><Icon name="pin" size={14} />Preview venue location in Google Maps <Icon name="arrow-right" size={13} /></a>}
       <label className="owner-listing-toggle"><input type="checkbox" checked={Boolean(form.is_active)} onChange={change('is_active')} /><span><b>Show this venue to players</b><small>Pause the public listing without deleting your bookings or schedule.</small></span></label>
       <div className="owner-form-actions"><button className="owner-primary-button" type="submit"><Icon name="check" size={15} /> {selectedVenue ? 'Save changes' : 'Create venue'}</button>{selectedVenue && <button className="owner-outline-button" type="button" onClick={() => onToggleActive(selectedVenue)}>{selectedVenue.is_active ? 'Pause listing' : 'Activate listing'}</button>}</div>

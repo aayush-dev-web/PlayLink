@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import DashboardShell from '../components/DashboardShell.jsx'
 import Icon from '../components/Icon.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
+import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
 
 const defaultPreferences = {
   eventActivity: true,
@@ -18,6 +19,7 @@ function preferencesKey(userId) {
 
 export default function Settings() {
   const { user } = useAuth()
+  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
   const [search, setSearch] = useState('')
   const [preferences, setPreferences] = useState(defaultPreferences)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
@@ -113,8 +115,9 @@ export default function Settings() {
             <section className="settings-card">
               <div className="settings-card-heading"><span><Icon name="compass" size={19} /></span><div><h2>Discovery</h2><p>Choose the sports and units used in your local preview.</p></div></div>
               <fieldset className="settings-sport-options"><legend>Preferred sports</legend>
-                {['Futsal', 'Cricket'].map((sport) => <label key={sport}><input type="checkbox" checked={preferences.preferredSports.includes(sport)} onChange={() => toggleSport(sport)} /><Icon name={sport === 'Cricket' ? 'cricket' : 'futsal'} size={16} />{sport}</label>)}
+                {sportOptions.map((sport) => <label key={sport.slug}><input type="checkbox" checked={preferences.preferredSports.includes(sport.name)} onChange={() => toggleSport(sport.name)} /><Icon name={sport.slug === 'cricket' ? 'cricket' : sport.slug === 'futsal' ? 'futsal' : 'player'} size={16} />{sport.name}</label>)}
               </fieldset>
+              {sportsError && <p className="settings-feedback" role="alert">{sportsError}</p>}
               <label className="settings-unit-select"><span>Distance unit</span><select value={preferences.distanceUnit} onChange={(event) => updatePreference('distanceUnit', event.target.value)}><option value="km">Kilometers (km)</option><option value="mi">Miles (mi)</option></select></label>
             </section>
           </div>

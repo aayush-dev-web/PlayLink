@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase, supabaseConfigured } from './supabase.js'
 import { useAuth } from './AuthContext.jsx'
+import { isDesignatedAdmin, isDesignatedAdminEmail } from './adminAccess.js'
 import VenuePhotoPicker from '../components/VenuePhotoPicker.jsx'
 import { uploadVenuePhoto, validateVenuePhoto } from '../data/venuePhotos.js'
+import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
 import './auth.css'
 
 const viewContent = {
@@ -34,7 +36,7 @@ const viewContent = {
   forgot: {
     eyebrow: 'ACCOUNT RECOVERY',
     title: 'Forgot your password?',
-    description: 'We’ll email you a secure link to choose a new password.',
+    description: 'We’ll send a verification code to confirm your email before you reset your password.',
     brandEyebrow: 'NO WORRIES',
     brandTitle: <>Every player<br />gets a <span>reset.</span></>,
     brandDescription: 'It happens. Get back in the game with a few simple steps.',
@@ -65,6 +67,239 @@ function passwordStrength(value) {
 
 const passwordStrengthLabels = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong', 'Very strong']
 const resendCooldownSeconds = 60
+const challengeDurationSeconds = 120
+
+function formatCountdown(seconds) {
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`
+}
+
+function isInvalidOtpError(error) {
+  return error?.code === 'otp_expired'
+    || (error?.status === 400 && /token has expired or is invalid|invalid (?:otp|token|code)|(?:otp|token|code) (?:is )?(?:invalid|expired|incorrect)/i.test(error.message || ''))
+}
+
+function PenaltyOtpGame({ value, onChange, length = 6, label = 'verification code', secondsRemaining, onResend, resendDisabled, resendLabel }) {
+  const stageRef = useRef(null)
+  const gameRef = useRef(null)
+  const slotsRef = useRef([])
+  const timersRef = useRef([])
+  const dragTrailRef = useRef([])
+  const [shot, setShot] = useState(null)
+  const [phase, setPhase] = useState('')
+  const [dragTrail, setDragTrail] = useState([])
+  const [glowingIndex, setGlowingIndex] = useState(-1)
+  const [kicking, setKicking] = useState(false)
+
+  useEffect(() => () => timersRef.current.forEach(window.clearTimeout), [])
+
+  function kick(digit, target, drawnTrail = []) {
+    if (kicking || secondsRemaining <= 0 || value.length >= length) return
+    const stage = stageRef.current
+    const game = gameRef.current
+    if (!stage || !game || !target) return
+    const stageRect = stage.getBoundingClientRect()
+    const gameRect = game.getBoundingClientRect()
+    const targetRect = target.getBoundingClientRect()
+    const slotRect = slotsRef.current[value.length]?.getBoundingClientRect()
+    if (!slotRect) return
+    timersRef.current.forEach(window.clearTimeout)
+    timersRef.current = []
+    const ballRect = stage.querySelector('.penalty-ball')?.getBoundingClientRect()
+    const start = drawnTrail[0] || (ballRect ? {
+      x: ballRect.left + ballRect.width / 2 - stageRect.left,
+      y: ballRect.top + ballRect.height / 2 - stageRect.top,
+    } : { x: stageRect.width / 2, y: stageRect.height - 40 })
+    const end = {
+      x: targetRect.left + targetRect.width / 2 - stageRect.left,
+      y: targetRect.top + targetRect.height / 2 - stageRect.top,
+    }
+    const trajectory = drawnTrail.length > 1
+      ? [...drawnTrail, end]
+      : [start, { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 + 48 }, end]
+    const nextShot = {
+      id: Date.now(),
+      digit,
+      x: end.x,
+      y: end.y,
+      gameX: targetRect.left + targetRect.width / 2 - gameRect.left,
+      gameY: targetRect.top + targetRect.height / 2 - gameRect.top,
+      ballPath: `M ${trajectory.map(({ x, y }) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(' L ')}`,
+      endX: slotRect.left + slotRect.width / 2 - gameRect.left,
+      endY: slotRect.top + slotRect.height / 2 - gameRect.top,
+      midX: (slotRect.left + slotRect.width / 2 - gameRect.left - (targetRect.left + targetRect.width / 2 - gameRect.left)) * .5,
+      midY: (slotRect.top + slotRect.height / 2 - gameRect.top - (targetRect.top + targetRect.height / 2 - gameRect.top)) * .5 - 105,
+      targetWidth: targetRect.width,
+      targetHeight: targetRect.height,
+    }
+    setKicking(true)
+    dragTrailRef.current = []
+    setDragTrail([])
+    setShot(nextShot)
+    setPhase('shot')
+    timersRef.current.push(
+      window.setTimeout(() => setPhase('impact'), 500),
+      window.setTimeout(() => setPhase('number'), 700),
+      window.setTimeout(() => setPhase('flight'), 1500),
+      window.setTimeout(() => {
+        onChange(`${value}${digit}`)
+        setGlowingIndex(value.length)
+        timersRef.current.push(window.setTimeout(() => setGlowingIndex(-1), 700))
+        setShot(null)
+        setPhase('')
+        setKicking(false)
+      }, 2000),
+    )
+  }
+
+  function handlePointerDown(event) {
+    if (!event.target.closest('.penalty-ball') || kicking || secondsRemaining <= 0 || value.length >= length) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const stageRect = event.currentTarget.getBoundingClientRect()
+    const ballRect = event.target.closest('.penalty-ball').getBoundingClientRect()
+    const start = {
+      x: ballRect.left + ballRect.width / 2 - stageRect.left,
+      y: ballRect.top + ballRect.height / 2 - stageRect.top,
+    }
+    dragTrailRef.current = [start]
+    setDragTrail([start])
+  }
+
+  function handlePointerMove(event) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const point = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+    const nextTrail = [...dragTrailRef.current, point]
+    dragTrailRef.current = nextTrail
+    setDragTrail(nextTrail)
+  }
+
+  function handlePointerUp(event) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+    event.currentTarget.releasePointerCapture(event.pointerId)
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-penalty-digit]')
+    if (target) kick(target.dataset.penaltyDigit, target, dragTrailRef.current)
+    else clearTrail()
+  }
+
+  function handlePointerCancel(event) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    clearTrail()
+  }
+
+  function clearTrail() {
+    dragTrailRef.current = []
+    setDragTrail([])
+  }
+
+  function eraseDigit(index) {
+    if (kicking) return
+    onChange(value.slice(0, index))
+  }
+
+  return (
+    <div className="penalty-game" ref={gameRef}>
+      <div className="penalty-code-area">
+        <div className="penalty-code-slots" role="group" aria-label={`Entered ${label}; tap a digit to remove it and all later digits`}>
+          {Array.from({ length }, (_, index) => (
+            <button
+              ref={(element) => { slotsRef.current[index] = element }}
+              className={`penalty-code-slot${value[index] ? ' has-digit' : ''}${glowingIndex === index ? ' is-captured' : ''}`}
+              type="button"
+              key={index}
+              disabled={!value[index] || kicking}
+              onClick={() => eraseDigit(index)}
+              aria-label={value[index] ? `Remove digit ${value[index]} in position ${index + 1} and later digits` : `Empty ${label} position ${index + 1}`}
+            >
+              {value[index] || <span aria-hidden="true">·</span>}
+            </button>
+          ))}
+        </div>
+        {value.length > 0 && <button className="penalty-remove-last" type="button" disabled={kicking} onClick={() => onChange(value.slice(0, -1))}>Remove last digit</button>}
+      </div>
+      <div
+        className={`penalty-stage${kicking ? ' is-kicking' : ''}${secondsRemaining <= 0 ? ' is-expired' : ''}`}
+        ref={stageRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+      >
+        <div className="penalty-number-grid" role="group" aria-label="Penalty goal number targets">
+          {Array.from({ length: 10 }, (_, digit) => {
+            const broken = phase === 'impact' && shot?.digit === String(digit)
+            const removed = (phase === 'number' || phase === 'flight') && shot?.digit === String(digit)
+            return (
+              <div
+                role="img"
+                className={`penalty-number${broken ? ' is-broken' : ''}${removed ? ' is-removed' : ''}`}
+                data-penalty-digit={digit}
+                key={digit}
+                aria-label={`Goal number ${digit}`}
+              >
+                <span>{digit}</span>
+              </div>
+            )
+          })}
+        </div>
+        {shot && (phase === 'impact' || phase === 'flight') && <div
+          className="penalty-fragments"
+          style={{ left: `${shot.x}px`, top: `${shot.y}px`, '--fragment-half-width': `${shot.targetWidth / 2}px`, '--fragment-half-height': `${shot.targetHeight / 2}px` }}
+          aria-hidden="true"
+        >
+          {Array.from({ length: 8 }, (_, index) => {
+            const column = index % 4
+            const row = Math.floor(index / 4)
+            return <i key={index} style={{
+              '--fragment-index': index,
+              '--fragment-width': `${shot.targetWidth / 4}px`,
+              '--fragment-height': `${shot.targetHeight / 2}px`,
+              '--fragment-left': `${(column - 1.5) * shot.targetWidth / 4}px`,
+              '--fragment-top': `${(row - .5) * shot.targetHeight / 2}px`,
+              '--fragment-fall-x': `${(column - 1.5) * 22}px`,
+              '--fragment-fall-y': `${(row - .5) * 30 + 90}px`,
+              '--fragment-spin': `${(index % 2 ? 1 : -1) * (220 + index * 24)}deg`,
+            }} />
+          })}
+        </div>}
+        {shot && <div
+          className="penalty-ball-flight"
+          style={{ offsetPath: `path('${shot.ballPath}')` }}
+          aria-hidden="true"
+        ><img src="/playlink-football.png" alt="" /></div>}
+        <div className={`penalty-ball${shot ? ' is-hidden' : ''}`} aria-hidden="true">
+          <img src="/playlink-football.png" alt="" draggable="false" />
+        </div>
+        {secondsRemaining <= 0 && <div className="penalty-expired-overlay">
+          <strong>Challenge time is up</strong>
+          <button type="button" onClick={onResend} disabled={resendDisabled}>{resendLabel}</button>
+        </div>}
+        {dragTrail.length > 1 && !shot && <svg className="penalty-drag-trail" aria-hidden="true">
+          <polyline points={dragTrail.map(({ x, y }) => `${x},${y}`).join(' ')} />
+        </svg>}
+      </div>
+      {shot && (phase === 'number' || phase === 'flight') && <span
+        className="penalty-flying-digit"
+        key={shot.id}
+        data-phase={phase}
+        style={{
+          left: `${shot.gameX}px`,
+          top: `${shot.gameY}px`,
+          '--digit-flight-x': `${shot.endX - shot.gameX}px`,
+          '--digit-flight-y': `${shot.endY - shot.gameY}px`,
+          '--digit-near-x': `${(shot.endX - shot.gameX) * .86}px`,
+          '--digit-near-y': `${(shot.endY - shot.gameY) * .86}px`,
+          '--digit-mid-x': `${shot.midX}px`,
+          '--digit-mid-y': `${shot.midY}px`,
+        }}
+        aria-hidden="true"
+      >{shot.digit}</span>}
+    </div>
+  )
+}
 
 function PasswordField({ id, label, autoComplete, value, onChange, required = true, showStrength = false }) {
   const [visible, setVisible] = useState(false)
@@ -108,22 +343,27 @@ async function uploadInitialOwnerVenuePhoto(userId, file) {
 export default function AuthPage({ mode = 'signup' }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
   const { user } = useAuth()
   const requestedReturnTo = new URLSearchParams(location.search).get('next')
   const postLoginPath = requestedReturnTo?.startsWith('/') && !requestedReturnTo.startsWith('//')
     ? requestedReturnTo
-    : '/dashboard'
+    : isDesignatedAdmin(user) ? '/admin' : '/dashboard'
   const view = viewContent[mode] || viewContent.signup
-  const [form, setForm] = useState({ fullName: '', username: '', email: '', phone: '', password: '', confirmPassword: '', otp: '', accountType: 'player', ownerVenue: { name: '', sport: 'Futsal', area: '', address: '', price_per_hour: '', image_url: '', latitude: '', longitude: '', maps_url: '', description: '', is_active: true } })
+  const [form, setForm] = useState({ fullName: '', username: '', email: '', phone: '', password: '', confirmPassword: '', otp: '', recoveryOtp: '', accountType: 'player', preferredSport: 'Futsal', ownerVenue: { name: '', sport: 'Futsal', area: '', address: '', price_per_hour: '', image_url: '', latitude: '', longitude: '', maps_url: '', description: '', is_active: true } })
   const [busy, setBusy] = useState(false)
   const [otpSent, setOtpSent] = useState(false)
-  const [recoveryLinkSent, setRecoveryLinkSent] = useState(false)
+  const [recoveryOtpSent, setRecoveryOtpSent] = useState(false)
+  const otpScreen = (mode === 'signup' && otpSent) || (mode === 'forgot' && recoveryOtpSent)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('error')
   const [usernameSuggestions, setUsernameSuggestions] = useState([])
   const [venuePhotoFile, setVenuePhotoFile] = useState(null)
   const [pendingOwnerPhotoUserId, setPendingOwnerPhotoUserId] = useState('')
   const [resendCooldown, setResendCooldown] = useState(0)
+  const [challengeExpiresAt, setChallengeExpiresAt] = useState(0)
+  const [challengeSecondsRemaining, setChallengeSecondsRemaining] = useState(0)
+  const activeOtpValue = mode === 'signup' ? form.otp : form.recoveryOtp
 
   useEffect(() => {
     if (mode !== 'google-complete') return
@@ -141,6 +381,7 @@ export default function AuthPage({ mode = 'signup' }) {
       ...current,
       email: user.email || '',
       fullName: user.user_metadata?.full_name || user.user_metadata?.name || '',
+      preferredSport: user.user_metadata?.preferred_sport || 'Futsal',
     }))
   }, [mode, user, navigate])
 
@@ -158,15 +399,33 @@ export default function AuthPage({ mode = 'signup' }) {
   }, [resendCooldown])
 
   useEffect(() => {
+    if (!otpScreen || !challengeExpiresAt) {
+      setChallengeSecondsRemaining(0)
+      return undefined
+    }
+    const updateRemaining = () => {
+      setChallengeSecondsRemaining(Math.max(0, Math.ceil((challengeExpiresAt - Date.now()) / 1000)))
+    }
+    updateRemaining()
+    const intervalId = window.setInterval(updateRemaining, 1000)
+    return () => window.clearInterval(intervalId)
+  }, [otpScreen, challengeExpiresAt])
+
+  useEffect(() => {
     if (user && (mode === 'signup' || mode === 'login')) {
-      navigate(mode === 'login' ? postLoginPath : '/dashboard', { replace: true })
+      navigate(mode === 'login' ? (isDesignatedAdmin(user) ? '/admin' : postLoginPath) : '/dashboard', { replace: true })
     }
   }, [user, mode, navigate, postLoginPath])
 
   function change(key) {
     return (event) => {
-      setForm((current) => ({ ...current, [key]: event.target.value }))
-      if (key === 'email' && mode === 'forgot') setRecoveryLinkSent(false)
+      const value = event.target.value
+      setForm((current) => ({ ...current, [key]: value, ...(key === 'email' && mode === 'forgot' ? { recoveryOtp: '' } : {}) }))
+      if (key === 'email' && mode === 'forgot') {
+        setRecoveryOtpSent(false)
+        setResendCooldown(0)
+        setChallengeExpiresAt(0)
+      }
       if (key === 'username') {
         setUsernameSuggestions([])
         setMessage('')
@@ -273,6 +532,10 @@ export default function AuthPage({ mode = 'signup' }) {
             throw error
           }
         }
+        const { error: sportError } = await supabase.from('profiles')
+          .update({ preferred_sport: form.preferredSport })
+          .eq('id', user.id)
+        if (sportError) throw sportError
         if (form.accountType === 'venue_owner' && venuePhotoFile) await uploadInitialOwnerVenuePhoto(user.id, venuePhotoFile)
         navigate('/dashboard', { replace: true })
       } else if (mode === 'signup') {
@@ -283,11 +546,23 @@ export default function AuthPage({ mode = 'signup' }) {
           return
         }
         if (otpSent) {
-          const { data, error } = await supabase.auth.verifyOtp({
+          if (!/^\d{6}$/.test(form.otp)) throw new Error('Take six penalty kicks to enter the 6-digit verification code.')
+          let { data, error } = await supabase.auth.verifyOtp({
             email: form.email.trim(),
             token: form.otp.trim(),
             type: 'signup',
           })
+          if (error?.name === 'AuthInvalidTokenResponseError') {
+            const signInResult = await supabase.auth.signInWithPassword({
+              email: form.email.trim(),
+              password: form.password,
+            })
+            if (signInResult.error) {
+              throw new Error(`Supabase returned an incomplete verification response, and automatic sign-in failed: ${signInResult.error.message}. Request a new code. If this continues, check the Supabase Auth logs.`)
+            }
+            data = signInResult.data
+            error = null
+          }
           if (error) throw error
           if (data.session && data.user) {
             setPendingOwnerPhotoUserId(data.user.id)
@@ -339,6 +614,7 @@ export default function AuthPage({ mode = 'signup' }) {
               username: form.username.trim().toLowerCase(),
               phone: form.phone.trim(),
               account_type: form.accountType,
+              preferred_sport: form.preferredSport,
               ...(form.accountType === 'venue_owner' ? { owner_venue: { ...form.ownerVenue, image_url: '' } } : {}),
             },
           },
@@ -366,6 +642,7 @@ export default function AuthPage({ mode = 'signup' }) {
         }
         else {
           setOtpSent(true)
+          setChallengeExpiresAt(Date.now() + challengeDurationSeconds * 1000)
           setResendCooldown(resendCooldownSeconds)
           showMessage('Supabase accepted your signup request. Check your inbox and spam folder for a verification email. If it does not arrive, check Supabase Auth logs and your email provider delivery status.', 'success')
         }
@@ -377,15 +654,48 @@ export default function AuthPage({ mode = 'signup' }) {
         if (error) throw error
         const session = data.session
         if (!session) throw new Error('Sign-in did not return an active session.')
-        navigate(postLoginPath, { replace: true })
+        navigate(isDesignatedAdmin(session.user) ? '/admin' : postLoginPath, { replace: true })
       } else if (mode === 'forgot') {
+        if (recoveryOtpSent) {
+          if (!/^\d{6}$/.test(form.recoveryOtp)) throw new Error('Take six penalty kicks to enter the 6-digit password-reset code.')
+          const { data, error: verificationError } = await supabase.auth.verifyOtp({
+            email: form.email.trim(),
+            token: form.recoveryOtp.trim(),
+            type: 'recovery',
+          })
+          let recoverySession = data.session
+          let error = verificationError
+          if (!verificationError || verificationError.name === 'AuthInvalidTokenResponseError') {
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+            if (sessionError) throw sessionError
+            recoverySession ||= sessionData.session
+            if (verificationError?.name === 'AuthInvalidTokenResponseError'
+              && recoverySession?.user.email?.toLowerCase() === form.email.trim().toLowerCase()) {
+              error = null
+            }
+          }
+          if (error?.name === 'AuthInvalidTokenResponseError') {
+            setForm((current) => ({ ...current, recoveryOtp: '' }))
+            showMessage('Supabase did not return a password-reset session for this code. Request a new code. If this continues, check the hosted Supabase Auth logs and Reset password email template.')
+            return
+          }
+          if (error) throw error
+          if (!recoverySession || recoverySession.user.email?.toLowerCase() !== form.email.trim().toLowerCase()) {
+            setForm((current) => ({ ...current, recoveryOtp: '' }))
+            showMessage('Supabase accepted the code but did not create a password-reset session for this email. Request a new code. If this keeps happening, check the Supabase Auth logs and recovery email template.')
+            return
+          }
+          navigate('/reset-password', { replace: true })
+          return
+        }
         const { error } = await supabase.auth.resetPasswordForEmail(form.email.trim(), {
           redirectTo: `${window.location.origin}/reset-password`,
         })
         if (error) throw error
-        setRecoveryLinkSent(true)
+        setRecoveryOtpSent(true)
+        setChallengeExpiresAt(Date.now() + challengeDurationSeconds * 1000)
         setResendCooldown(resendCooldownSeconds)
-        showMessage('If an account exists for that email, a reset link has been sent. Open it to choose your new password.', 'success')
+        showMessage('If an account exists for this Gmail address, a code has been sent. Check your inbox, spam, and Promotions.', 'success')
       } else if (mode === 'reset') {
         if (form.password !== form.confirmPassword) {
           showMessage('Your passwords do not match.')
@@ -397,7 +707,14 @@ export default function AuthPage({ mode = 'signup' }) {
         window.setTimeout(() => navigate('/sign-in', { replace: true }), 900)
       }
     } catch (authError) {
-      showMessage(authError instanceof Error ? authError.message : 'Authentication failed. Please try again.')
+      if (mode === 'login' && isDesignatedAdminEmail(form.email)
+        && /invalid login credentials/i.test(authError instanceof Error ? authError.message : '')) {
+        showMessage('Supabase did not find an account with this password. If this is your first admin login, create the account and verify its email. If the account already exists, reset its password. Apply the admin access and profile inbox migrations to the connected Supabase project; verified admin accounts are then routed to /admin.')
+      } else if (((mode === 'signup' && otpSent) || (mode === 'forgot' && recoveryOtpSent)) && isInvalidOtpError(authError)) {
+        showMessage('Code does not match. Check the code and try again.')
+      } else {
+        showMessage(authError instanceof Error ? authError.message : 'Authentication failed. Please try again.')
+      }
     } finally {
       setBusy(false)
     }
@@ -415,13 +732,39 @@ export default function AuthPage({ mode = 'signup' }) {
           redirectTo: `${window.location.origin}/reset-password`,
         })
       if (result.error) throw result.error
-      if (mode === 'forgot') setRecoveryLinkSent(true)
+      setForm((current) => ({ ...current, ...(mode === 'signup' ? { otp: '' } : { recoveryOtp: '' }) }))
+      setChallengeExpiresAt(Date.now() + challengeDurationSeconds * 1000)
       setResendCooldown(resendCooldownSeconds)
       showMessage(mode === 'signup'
-        ? 'Supabase accepted the resend request. Check your inbox and spam folder; if no email arrives, check Supabase Auth logs and your email provider delivery status.'
-        : 'Supabase accepted the reset request. Check your inbox and spam folder; if no email arrives, check Supabase Auth logs and your email provider delivery status.', 'success')
+        ? 'If signup is still awaiting verification, a new verification code has been sent.'
+        : 'If an account exists for this Gmail address, a new code has been sent. Check your inbox, spam, and Promotions.', 'success')
     } catch (authError) {
       showMessage(authError instanceof Error ? authError.message : 'A new code could not be sent.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function sendFallbackLink(type) {
+    if (!supabase) return
+    if (resendCooldown > 0) return
+    setBusy(true)
+    setMessage('')
+    try {
+      const { error } = await supabase.functions.invoke('send-auth-fallback-link', {
+        body: {
+          type,
+          email: form.email.trim(),
+          ...(type === 'signup' ? { password: form.password } : {}),
+        },
+      })
+      if (error) throw error
+      setResendCooldown(resendCooldownSeconds)
+      showMessage(type === 'signup'
+        ? 'If signup is still awaiting verification, a one-time sign-in link has been sent. Check your inbox and spam folder.'
+        : 'If an account exists for that email, a password-reset link has been sent. Check your inbox and spam folder.', 'success')
+    } catch (authError) {
+      showMessage(authError instanceof Error ? authError.message : 'A fallback email could not be sent.')
     } finally {
       setBusy(false)
     }
@@ -447,17 +790,34 @@ export default function AuthPage({ mode = 'signup' }) {
 
   return (
     <main className="auth-page">
-      <div className="auth-shell">
+      <div className={`auth-shell${otpScreen ? ' auth-shell-otp' : ''}`}>
         <section className="auth-brand-panel">
           <Link to="/dashboard" className="auth-brand" aria-label="PlayLink dashboard"><img src="/playlink-auth-logo.png" alt="PlayLink — Find Courts. Join Games. Play Together." /></Link>
           <div className="auth-brand-copy"><span>{view.brandEyebrow}</span><h1>{view.brandTitle}</h1><p>{view.brandDescription}</p></div>
         </section>
         <section className="auth-form-panel">
-          <div className="auth-form-wrap">
+          <div className={`auth-form-wrap${otpScreen ? ' auth-form-wrap-otp' : ''}`}>
             <Link to="/dashboard" className="auth-mobile-brand" aria-label="PlayLink dashboard"><img src="/playlink-auth-logo.png" alt="PlayLink — Find Courts. Join Games. Play Together." /></Link>
             {mode === 'reset' && <Link className="auth-back-link" to="/sign-in">← Back to login</Link>}
             {mode === 'google-complete' && <Link className="auth-back-link" to="/sign-in">← Back to login</Link>}
-            <div className="auth-form-heading"><span>{view.eyebrow}</span><h2>{view.title}</h2><p>{view.description}</p></div>
+            <div className="auth-form-heading">
+              <div>
+                <span>{otpScreen ? mode === 'signup' ? 'WELCOME TO PLAYLINK' : 'ACCOUNT RECOVERY' : view.eyebrow}</span>
+                <h2>{otpScreen ? mode === 'signup' ? 'Verify your account' : 'Reset your password' : view.title}</h2>
+                <p>{otpScreen ? 'Enter the 6-digit code by scoring goals.' : view.description}</p>
+              </div>
+              {otpScreen && <div className={`penalty-countdown${challengeSecondsRemaining > 0 && challengeSecondsRemaining <= 5 ? ' is-warning' : ''}${challengeSecondsRemaining <= 0 ? ' is-finished' : ''}`} role="timer" aria-label={challengeSecondsRemaining <= 0 ? 'Challenge time is up' : `Time left ${formatCountdown(challengeSecondsRemaining)}`}>
+                <span className="penalty-countdown-icon" aria-hidden="true">
+                  <svg viewBox="0 0 64 64" focusable="false">
+                    <path className="penalty-hourglass-frame" d="M12 8h40v8H12zM12 48h40v8H12zM18 16v9l12 7-12 7v9M46 16v9l-12 7 12 7v9" />
+                    <path className="penalty-hourglass-top-sand" d="M21 19h22l-11 10z" />
+                    <path className="penalty-hourglass-stream" d="M32 31v9" />
+                    <path className="penalty-hourglass-bottom-sand" d="m20 45 12-14 12 14z" />
+                  </svg>
+                </span>
+                <span><small>{challengeSecondsRemaining <= 0 ? 'Challenge' : 'Time left'}</small><strong>{challengeSecondsRemaining <= 0 ? 'Time up' : formatCountdown(challengeSecondsRemaining)}</strong></span>
+              </div>}
+            </div>
             <form onSubmit={submit}>
               {mode === 'google-complete' && <>
                 <label htmlFor="auth-google-full-name">Full name</label><input id="auth-google-full-name" autoComplete="name" value={form.fullName} onChange={change('fullName')} placeholder="Your full name" minLength="2" maxLength="80" required />
@@ -468,11 +828,14 @@ export default function AuthPage({ mode = 'signup' }) {
                 <PasswordField id="auth-google-password" label="Password" autoComplete="new-password" value={form.password} onChange={change('password')} showStrength />
                 <PasswordField id="auth-google-confirm-password" label="Confirm password" autoComplete="new-password" value={form.confirmPassword} onChange={change('confirmPassword')} />
                 <label htmlFor="auth-google-account-type">I’m joining as</label><select className="auth-select" id="auth-google-account-type" value={form.accountType} onChange={change('accountType')}><option value="player">Player</option><option value="venue_owner">Venue owner</option></select>
+                <label htmlFor="auth-google-preferred-sport">Preferred sport</label><select className="auth-select" id="auth-google-preferred-sport" value={form.preferredSport} onChange={change('preferredSport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select>
+                {sportsError && <p className="auth-message error" role="alert">{sportsError}</p>}
                 {form.accountType === 'venue_owner' && <fieldset className="auth-owner-venue">
                   <legend>Venue profile</legend>
                   <p>Enter your venue details to publish it after registration.</p>
                   <label htmlFor="auth-google-venue-name">Venue name</label><input id="auth-google-venue-name" value={form.ownerVenue.name} onChange={changeOwnerVenue('name')} required minLength="2" maxLength="120" placeholder="Your venue’s name" />
-                  <label htmlFor="auth-google-venue-sport">Sport</label><select className="auth-select" id="auth-google-venue-sport" value={form.ownerVenue.sport} onChange={changeOwnerVenue('sport')}><option>Futsal</option><option>Cricket</option><option>Both</option></select>
+                  <label htmlFor="auth-google-venue-sport">Sport</label><select className="auth-select" id="auth-google-venue-sport" value={form.ownerVenue.sport} onChange={changeOwnerVenue('sport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select>
+                  {sportsError && <p className="auth-message error" role="alert">{sportsError}</p>}
                   <label htmlFor="auth-google-venue-area">District / area</label><input id="auth-google-venue-area" value={form.ownerVenue.area} onChange={changeOwnerVenue('area')} required minLength="2" maxLength="160" placeholder="Kathmandu, Lalitpur, or Bhaktapur" />
                   <label htmlFor="auth-google-venue-address">Street address</label><input id="auth-google-venue-address" value={form.ownerVenue.address} onChange={changeOwnerVenue('address')} maxLength="240" placeholder="Full address" />
                   <label htmlFor="auth-google-venue-price">Hourly rate (Rs)</label><input id="auth-google-venue-price" type="number" min="0" step="50" value={form.ownerVenue.price_per_hour} onChange={changeOwnerVenue('price_per_hour')} required />
@@ -488,12 +851,15 @@ export default function AuthPage({ mode = 'signup' }) {
                 <label htmlFor="auth-username">Username</label><input id="auth-username" autoComplete="username" value={form.username} onChange={change('username')} placeholder="Choose a unique username" minLength="3" maxLength="24" required /><small className="auth-field-hint">3–24 characters; letters, numbers, and underscores.</small>
                 <label htmlFor="auth-signup-email">Email address</label><input id="auth-signup-email" type="email" autoComplete="email" value={form.email} onChange={change('email')} placeholder="you@example.com" required />
                 <label htmlFor="auth-account-type">I’m joining as</label><select className="auth-select" id="auth-account-type" value={form.accountType} onChange={change('accountType')}><option value="player">Player</option><option value="venue_owner">Venue owner</option></select>
+                <label htmlFor="auth-preferred-sport">Preferred sport</label><select className="auth-select" id="auth-preferred-sport" value={form.preferredSport} onChange={change('preferredSport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select>
+                {sportsError && <p className="auth-message error" role="alert">{sportsError}</p>}
                 {form.accountType === 'venue_owner' && <fieldset className="auth-owner-venue">
                   <legend>Venue profile</legend>
                   <p>Add the venue you want to list. You can update these details later in your owner dashboard.</p>
                   <label htmlFor="auth-venue-name">Venue name</label><input id="auth-venue-name" value={form.ownerVenue.name} onChange={changeOwnerVenue('name')} required minLength="2" maxLength="120" placeholder="Your venue’s registered name" />
                   <small className="auth-field-hint">Enter accurate venue details. Your listing can be edited after registration.</small>
-                  <label htmlFor="auth-venue-sport">Sport</label><select className="auth-select" id="auth-venue-sport" value={form.ownerVenue.sport} onChange={changeOwnerVenue('sport')}><option>Futsal</option><option>Cricket</option><option>Both</option></select>
+                  <label htmlFor="auth-venue-sport">Sport</label><select className="auth-select" id="auth-venue-sport" value={form.ownerVenue.sport} onChange={changeOwnerVenue('sport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select>
+                  {sportsError && <p className="auth-message error" role="alert">{sportsError}</p>}
                   <label htmlFor="auth-venue-area">District / area</label><input id="auth-venue-area" value={form.ownerVenue.area} onChange={changeOwnerVenue('area')} required minLength="2" maxLength="160" placeholder="Kathmandu, Lalitpur, Bhaktapur…" />
                   <label htmlFor="auth-venue-address">Street address</label><input id="auth-venue-address" value={form.ownerVenue.address} onChange={changeOwnerVenue('address')} maxLength="240" placeholder="Full address" />
                   <label htmlFor="auth-venue-price">Hourly rate (Rs)</label><input id="auth-venue-price" type="number" min="0" step="50" value={form.ownerVenue.price_per_hour} onChange={changeOwnerVenue('price_per_hour')} required />
@@ -508,10 +874,12 @@ export default function AuthPage({ mode = 'signup' }) {
                 <PasswordField id="auth-confirm-password" label="Confirm password" autoComplete="new-password" value={form.confirmPassword} onChange={change('confirmPassword')} />
               </>}
               {mode === 'signup' && otpSent && <>
-                <label htmlFor="auth-signup-email-confirm">Email address</label><input id="auth-signup-email-confirm" type="email" value={form.email} readOnly />
-                <label htmlFor="auth-signup-otp">6-digit verification code</label><input id="auth-signup-otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength="6" value={form.otp} onChange={change('otp')} placeholder="Enter the code from your email" required />
-                <small className="auth-field-hint">If your email has a confirmation link instead of a code, open that link from your inbox to verify your account. You do not need to enter a code in that case.</small>
-                <button className="auth-resend-code" type="button" disabled={busy || resendCooldown > 0} onClick={resendCode}>{resendCooldown > 0 ? `Resend verification email in ${resendCooldown}s` : 'Resend verification email'}</button>
+                <span className="penalty-code-label">Verification code</span>
+                <PenaltyOtpGame key={challengeExpiresAt} value={form.otp} onChange={(otp) => setForm((current) => ({ ...current, otp }))} label="signup verification code" secondsRemaining={challengeSecondsRemaining} onResend={resendCode} resendDisabled={busy || resendCooldown > 0} resendLabel={resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : busy ? 'Sending code…' : 'Resend code'} />
+                {challengeSecondsRemaining > 0 && <div className="penalty-auth-actions">
+                  <button className="auth-resend-code" type="button" disabled={busy || resendCooldown > 0} onClick={resendCode}>{resendCooldown > 0 ? `Resend OTP in ${resendCooldown}s` : 'Resend OTP'}</button>
+                  <button className="auth-resend-code" type="button" disabled={busy || resendCooldown > 0} onClick={() => sendFallbackLink('signup')}>{resendCooldown > 0 ? `Send link in ${resendCooldown}s` : 'Send sign-in link'}</button>
+                </div>}
               </>}
               {mode === 'login' && <>
                 <label htmlFor="auth-login-email">Email address</label><input id="auth-login-email" type="email" autoComplete="email" value={form.email} onChange={change('email')} placeholder="you@example.com" required />
@@ -519,14 +887,20 @@ export default function AuthPage({ mode = 'signup' }) {
                 <div className="auth-options"><span>Secure password sign-in</span><Link to="/forgot-password">Forgot password?</Link></div>
               </>}
               {mode === 'forgot' && <>
-                <label htmlFor="auth-reset-email">Email address</label><input id="auth-reset-email" type="email" autoComplete="email" value={form.email} onChange={change('email')} placeholder="you@example.com" required />
-                {recoveryLinkSent && <button className="auth-resend-code" type="button" disabled={busy || resendCooldown > 0} onClick={resendCode}>{resendCooldown > 0 ? `Resend reset link in ${resendCooldown}s` : 'Resend reset link'}</button>}
+                {!recoveryOtpSent && <><label htmlFor="auth-reset-email">Email address</label><input id="auth-reset-email" type="email" autoComplete="email" value={form.email} onChange={change('email')} placeholder="you@example.com" required /> </>}
+                {recoveryOtpSent && <>
+                  <span className="penalty-code-label">Password-reset code</span>
+                  <PenaltyOtpGame key={challengeExpiresAt} value={form.recoveryOtp} onChange={(recoveryOtp) => setForm((current) => ({ ...current, recoveryOtp }))} label="password-reset code" secondsRemaining={challengeSecondsRemaining} onResend={resendCode} resendDisabled={busy || resendCooldown > 0} resendLabel={resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : busy ? 'Sending code…' : 'Resend code'} />
+                  {challengeSecondsRemaining > 0 && <div className="penalty-auth-actions">
+                    <button className="auth-resend-code" type="button" disabled={busy || resendCooldown > 0} onClick={resendCode}>{resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}</button>
+                  </div>}
+                </>}
               </>}
               {mode === 'reset' && <>
                 <PasswordField id="auth-new-password" label="New password" autoComplete="new-password" value={form.password} onChange={change('password')} showStrength />
                 <PasswordField id="auth-new-password-confirm" label="Confirm new password" autoComplete="new-password" value={form.confirmPassword} onChange={change('confirmPassword')} />
               </>}
-              <button className="auth-submit" type="submit" disabled={busy || (mode === 'forgot' && recoveryLinkSent && resendCooldown > 0)}>{busy ? 'Please wait…' : mode === 'google-complete' ? 'Complete registration' : mode === 'signup' ? otpSent ? 'Verify code' : 'Create account' : mode === 'login' ? 'Log in' : mode === 'forgot' ? recoveryLinkSent ? resendCooldown > 0 ? `Resend link in ${resendCooldown}s` : 'Resend reset link' : 'Send reset link' : 'Save new password'} <span>→</span></button>
+              <button className={`auth-submit${otpScreen ? ' penalty-submit' : ''}`} type="submit" disabled={busy || (otpScreen && activeOtpValue.length !== 6)}>{busy ? 'Please wait…' : mode === 'google-complete' ? 'Complete registration' : mode === 'signup' ? otpSent ? 'Verify code' : 'Create account' : mode === 'login' ? 'Log in' : mode === 'forgot' ? recoveryOtpSent ? 'Verify code' : 'Send verification code' : 'Save new password'} <span>→</span></button>
               {mode === 'login' && <>
                 <div className="auth-divider"><span>or continue with</span></div>
                 <button className="auth-google" type="button" disabled={busy} onClick={signInWithGoogle}><svg className="auth-google-logo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3.1l5.7-5.7C34 5.1 29.3 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 20-8.9 20-20c0-1.3-.1-2.7-.4-3.9z" /><path fill="#34A853" d="M6.3 14.7l6.6 4.8C14.7 15.2 19 12 24 12c3.1 0 5.8 1.2 8 3.1l5.7-5.7C34 5.1 29.3 3 24 3 16 3 9.1 7.5 6.3 14.7z" /><path fill="#FBBC05" d="M12.9 19.5l-6.6-4.8a21 21 0 000 18.6l6.6-4.8a12 12 0 010-9z" /><path fill="#EA4335" d="M24 45c5.3 0 10.1-1.8 13.5-5l-6.3-5.2c-1.8 1.2-4.2 2-7.2 2-5 0-9.3-3.2-11.1-7.7l-6.6 4.8C9.4 40.5 16.2 45 24 45z" /></svg> Continue with Google</button>
@@ -538,7 +912,8 @@ export default function AuthPage({ mode = 'signup' }) {
             {mode === 'signup' && <p className="auth-switch-copy">Already have an account? <Link to="/sign-in">Log in</Link></p>}
             {mode === 'google-complete' && <p className="auth-switch-copy">Your Google account is connected. Your PlayLink profile will be saved when you complete this form.</p>}
             {mode === 'login' && <p className="auth-switch-copy">New to PlayLink? <Link to="/get-started">Create an account</Link></p>}
-            {mode === 'forgot' && <p className="auth-switch-copy">Remembered it? <Link to="/sign-in">Log in</Link></p>}
+            {mode === 'login' && isDesignatedAdminEmail(form.email) && <p className="auth-switch-copy">First admin setup? <Link to="/get-started">Create and verify this account</Link>, or <Link to="/forgot-password">reset its password</Link> if it already exists. After verifying the email, apply <code>20261003090000_admin_dashboard_access.sql</code> and <code>20261008170000_player_admin_profiles_and_inbox.sql</code> in the connected Supabase project.</p>}
+            {mode === 'forgot' && <p className="auth-switch-copy"><Link to="/sign-in">Log in</Link></p>}
             {mode === 'reset' && <p className="auth-switch-copy"><Link to="/sign-in">Return to login</Link></p>}
           </div>
         </section>

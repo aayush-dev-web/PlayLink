@@ -4,7 +4,7 @@ export function eventErrorMessage(error) {
   const message = error?.message || ''
   const code = error?.code || ''
   const knownErrors = {
-    organizer_role_required: 'An organizer account is required for this action.',
+    organizer_role_required: 'Your database is still using the old organizer-only event rule. Apply supabase/migrations/20261008180000_player_event_creation.sql in Supabase, then reload. The player account type must be set to player in public.profiles.',
     invalid_event_details: 'Check the event details, date/time, location, and team capacity.',
     invalid_request_details: 'Check the team name and message, then try again.',
     event_not_found: 'This event could not be found.',

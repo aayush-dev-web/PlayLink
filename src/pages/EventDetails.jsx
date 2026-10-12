@@ -3,16 +3,17 @@ import { Link } from 'react-router-dom'
 import DashboardShell from '../components/DashboardShell.jsx'
 import Modal from '../components/Modal.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
+import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
 import { eventErrorMessage, eventStatusLabel, formatEventDate, formatEventDay, getOwnAccountType, localDateTimeToIso, supabase, toLocalDateTime } from '../data/eventApi.js'
 
-function EventEditForm({ event, busy, error, onSubmit }) {
+function EventEditForm({ event, busy, error, onSubmit, sports }) {
   const start = toLocalDateTime(event.start_time)
   const end = toLocalDateTime(event.end_time)
   return (
     <form className="demo-form event-form" onSubmit={onSubmit}>
       <label>Event title<input name="title" required minLength="3" maxLength="100" defaultValue={event.title} /></label>
       <div className="form-row">
-        <label>Sport<select name="sport_type" required defaultValue={event.sport_type}><option value="futsal">Futsal</option><option value="cricket">Cricket</option></select></label>
+        <label>Sport<select name="sport_type" required defaultValue={event.sport_type}>{sports.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></label>
         <label>Maximum teams<input name="max_teams" type="number" required min="1" max="64" defaultValue={event.max_teams} /></label>
       </div>
       <label>Venue or location<input name="location_text" required minLength="2" maxLength="180" defaultValue={event.location_text} /></label>
@@ -21,7 +22,7 @@ function EventEditForm({ event, busy, error, onSubmit }) {
         <label>Start time<input name="start_time" type="time" required defaultValue={start.time} /></label>
       </div>
       <label>End time<input name="end_time" type="time" required defaultValue={end.time} /></label>
-      <label>Description<textarea name="description" rows="4" maxLength="3000" defaultValue={event.description} /></label>
+      <label>Description<textarea className="fixed-scroll-textarea" name="description" rows="4" maxLength="3000" defaultValue={event.description} /></label>
       {error && <p className="event-feedback error" role="alert">{error}</p>}
       <button className="button button-primary button-full" type="submit" disabled={busy}>{busy ? 'Saving changes…' : 'Save changes'}</button>
     </form>
@@ -30,6 +31,7 @@ function EventEditForm({ event, busy, error, onSubmit }) {
 
 export default function EventDetails({ eventId }) {
   const { user } = useAuth()
+  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
   const [details, setDetails] = useState(null)
   const [accountType, setAccountType] = useState(user?.user_metadata?.account_type || null)
   const [loading, setLoading] = useState(true)
@@ -159,7 +161,7 @@ export default function EventDetails({ eventId }) {
         <Link className="event-back-link" to="/events">← Back to events</Link>
         <section className="event-detail-hero">
           <div>
-            <span className="dashboard-kicker">{event.sport_type === 'futsal' ? 'FUTSAL' : 'CRICKET'} · PLAYLINK EVENT</span>
+            <span className="dashboard-kicker">{sportOptions.find((item) => item.slug === event.sport_type)?.name || event.sport_type} · PLAYLINK EVENT</span>
             <h1>{event.title}</h1>
             <p>{event.description || 'A PlayLink community game.'}</p>
             <div className="event-detail-statuses"><span className={`event-status-chip event-status-${event.status}`}>{eventStatusLabel(event.status)}</span><span className="event-detail-organizer">Organized by {event.organizer_name}{event.organizer_username ? ` · @${event.organizer_username}` : ''}</span></div>
@@ -167,7 +169,7 @@ export default function EventDetails({ eventId }) {
           <div className="event-capacity-card"><b>{details.team_count}<small> / {event.max_teams}</small></b><span>Teams participating</span><i>{hasSpot && event.status === 'open' ? `${event.max_teams - details.team_count} ${event.max_teams - details.team_count === 1 ? 'spot' : 'spots'} remaining` : 'No open team spots'}</i></div>
         </section>
 
-        {error && <p className="event-feedback error" role="alert">{error}</p>}
+        {(error || sportsError) && <p className="event-feedback error" role="alert">{error || sportsError}</p>}
         {actionError && <p className="event-feedback error" role="alert">{actionError}</p>}
 
         <div className="event-detail-grid">
@@ -176,7 +178,7 @@ export default function EventDetails({ eventId }) {
               <h2>Event information</h2>
               <div className="event-facts-grid">
                 <div><small>DATE & TIME</small><b>{formatEventDate(event.start_time)}</b><span>Ends {formatEventDate(event.end_time)}</span></div>
-                <div><small>SPORT</small><b>{event.sport_type === 'futsal' ? 'Futsal' : 'Cricket'}</b></div>
+                <div><small>SPORT</small><b>{sportOptions.find((item) => item.slug === event.sport_type)?.name || event.sport_type}</b></div>
                 <div><small>LOCATION</small><b>{event.location_text}</b><span>Location provided by organizer</span></div>
                 <div><small>PARTICIPATION</small><b>{details.team_count} of {event.max_teams} teams</b><span>{event.status === 'full' ? 'At capacity' : `${Math.max(0, event.max_teams - details.team_count)} available spots`}</span></div>
               </div>
@@ -227,7 +229,7 @@ export default function EventDetails({ eventId }) {
           <button className="button button-primary button-full" type="submit" disabled={Boolean(busyAction)}>{busyAction === 'request' ? 'Sending request…' : 'Send join request'}</button>
         </form>
       </Modal>}
-      {showEdit && <Modal eyebrow="PLAYLINK EVENTS" title="Edit event" onClose={() => setShowEdit(false)}><EventEditForm event={event} busy={busyAction === 'edit'} error={actionError} onSubmit={submitEdit} /></Modal>}
+      {showEdit && <Modal eyebrow="PLAYLINK EVENTS" title="Edit event" onClose={() => setShowEdit(false)}><EventEditForm event={event} busy={busyAction === 'edit'} error={actionError} onSubmit={submitEdit} sports={sportOptions} /></Modal>}
     </DashboardShell>
   )
 }

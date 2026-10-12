@@ -4,6 +4,7 @@ import DashboardShell from '../components/DashboardShell.jsx'
 import Icon from '../components/Icon.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { supabase } from '../auth/supabase.js'
+import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
 import { isCoordinateLabel, reverseGeocodeLocation, visibleLocationName } from '../utils/locationName.js'
 
 const PROFILE_EVENT = 'playlink-profile-updated'
@@ -52,14 +53,30 @@ function normalizeSocialUrl(value, network) {
 
 export default function DashboardProfile() {
   const { user } = useAuth()
+  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
   const isDemo = user?.id === 'playlink-local-demo'
   const [form, setForm] = useState({ ...initialProfile })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [photoFile, setPhotoFile] = useState(null)
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState('')
+  const [photoLoadFailed, setPhotoLoadFailed] = useState(false)
   const [error, setError] = useState('')
   const [usernameSuggestions, setUsernameSuggestions] = useState([])
   const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    if (!photoFile) {
+      setPhotoPreviewUrl('')
+      return undefined
+    }
+    const previewUrl = URL.createObjectURL(photoFile)
+    setPhotoPreviewUrl(previewUrl)
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [photoFile])
+
+  const displayedPhotoUrl = photoPreviewUrl || form.avatar_url
+  useEffect(() => setPhotoLoadFailed(false), [displayedPhotoUrl])
 
   useEffect(() => {
     let active = true
@@ -156,6 +173,7 @@ export default function DashboardProfile() {
       return
     }
     setPhotoFile(file)
+    setPhotoLoadFailed(false)
     setError('')
     setSuccess('')
   }
@@ -312,7 +330,7 @@ export default function DashboardProfile() {
         {success && <p className="dashboard-profile-message is-success" role="status">{success}</p>}
         {loading ? <div className="dashboard-profile-loading" role="status">Loading your profile…</div> : <form className="dashboard-profile-form" onSubmit={saveProfile}>
           <section className="profile-photo-panel">
-            <span className="profile-photo-avatar">{form.avatar_url ? <img src={form.avatar_url} alt="Profile preview" /> : (form.display_name || 'P').slice(0, 1).toUpperCase()}</span>
+            <span className="profile-photo-avatar">{displayedPhotoUrl && !photoLoadFailed ? <img src={displayedPhotoUrl} alt="Profile preview" onError={() => setPhotoLoadFailed(true)} /> : (form.display_name || 'P').slice(0, 1).toUpperCase()}</span>
             <div><b>Profile photo</b><p>Use a JPG, PNG, or WebP image up to {isDemo ? '2' : '5'} MB.</p><label className="profile-upload-button">Choose photo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={selectPhoto} /></label>{photoFile && <small>{photoFile.name}</small>}</div>
           </section>
 
@@ -329,7 +347,8 @@ export default function DashboardProfile() {
           <section className="profile-form-section">
             <h2>Player details</h2>
             <div className="profile-field-grid">
-              <label>Preferred sport<select name="preferred_sport" value={form.preferred_sport} onChange={setField}><option value="">Choose a sport</option><option>Futsal</option><option>Cricket</option><option>Both</option></select></label>
+              <label>Preferred sport<select name="preferred_sport" value={form.preferred_sport} onChange={setField}><option value="">Choose a sport</option>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select></label>
+              {sportsError && <p className="venue-favorite-error" role="alert">{sportsError}</p>}
               <label>Position or role<input name="player_position" value={form.player_position} onChange={setField} maxLength={60} placeholder="e.g. Goalkeeper, bowler" /></label>
               <label>Experience level<select name="skill_level" value={form.skill_level} onChange={setField}><option value="">Choose a level</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></label>
             </div>

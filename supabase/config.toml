@@ -1,0 +1,8 @@
+[auth.email]
+otp_expiry = 300
+
+[functions.send-auth-fallback-link]
+verify_jwt = false
+
+[functions.sportmonks-live-scores]
+verify_jwt = true

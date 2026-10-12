@@ -5,9 +5,10 @@ import Icon from '../components/Icon.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { supabase } from '../auth/supabase.js'
 import { getVenueImage } from '../data/venueImages.js'
+import LiveCricketScores from '../components/LiveCricketScores.jsx'
 
 const quickActions = [
-  { title: 'Find Nearby Venues', description: 'Browse futsal or cricket grounds', href: '/nearby', icon: 'venue' },
+  { title: 'Find Nearby Venues', description: 'Browse sports venues near you', href: '/nearby', icon: 'venue' },
   { title: 'Browse Events', description: 'Join or create sporting events', href: '/events', icon: 'calendar' },
   { title: 'Find Teams & Players', description: 'Connect with your community', href: '/teams', icon: 'teams' },
   { title: 'Create an Event', description: 'Set up your own game', href: '/events', icon: 'add' },
@@ -146,6 +147,7 @@ export default function DashboardHome() {
               {loading ? <div className="dashboard-home-empty">Loading events…</div> : filteredEvents.length ? filteredEvents.map((event) => <UpcomingEvent key={event.id} event={event} />)
                 : <div className="dashboard-home-empty"><b>No upcoming events</b><span>Published open events will appear here.</span></div>}
             </section>
+            <LiveCricketScores />
           </aside>
         </div>
       </div>

@@ -40,7 +40,18 @@ export default function useActivityNotifications({ user, role, path, notificatio
     try {
       let nextActivities = []
       if (!supabase) throw new Error('Notifications require a configured Supabase connection.')
-        if (role === 'owner') {
+        if (role === 'admin') {
+          const { data, error: activityError } = await supabase.rpc('get_playlink_admin_notifications')
+          if (activityError) throw activityError
+          nextActivities = (data || []).map((item) => ({
+            id: item.id,
+            kind: item.kind,
+            title: item.title,
+            body: item.body,
+            href: item.href,
+            created_at: item.created_at,
+          }))
+        } else if (role === 'owner') {
           const [bookingResult, conversationResult] = await Promise.all([
             supabase.from('venue_bookings').select('id, customer_name, sport, starts_at, created_at, status, customer_id')
               .eq('status', 'pending').not('customer_id', 'is', null).order('created_at', { ascending: false }),
@@ -115,27 +126,74 @@ export default function useActivityNotifications({ user, role, path, notificatio
             })))
           }
       }
-      const { data: ownedTeams, error: ownedTeamsError } = await supabase.from('community_teams')
-        .select('id, name')
-        .eq('owner_id', user.id)
-      if (ownedTeamsError) throw ownedTeamsError
-      if (ownedTeams?.length) {
-        const { data: requests, error: requestError } = await supabase.from('team_invitations')
-          .select('id, team_id, created_at')
-          .in('team_id', ownedTeams.map((team) => team.id))
-          .eq('kind', 'request')
-          .eq('status', 'pending')
+      if (role === 'player' && user.id !== 'playlink-local-demo') {
+        const { data: moderationMessages, error: moderationError } = await supabase
+          .from('player_inbox_messages')
+          .select('id,subject,body,created_at')
+          .eq('user_id', user.id)
+          .eq('direction', 'team_to_player')
           .order('created_at', { ascending: false })
-        if (requestError) throw requestError
-        const teamNames = new Map(ownedTeams.map((team) => [team.id, team.name]))
-        nextActivities.push(...(requests || []).map((request) => ({
-          id: `team-request:${request.id}`,
-          kind: 'team_request',
-          title: 'New request to join your team',
-          body: teamNames.get(request.team_id) || 'Open team requests to review this player.',
-          href: '/teams?tab=invitations',
-          created_at: request.created_at,
+        if (moderationError) throw moderationError
+        nextActivities.push(...(moderationMessages || [])
+          .filter((message) => /^Community warning \d+ of \d+$/.test(message.subject || '')
+            || message.subject === 'PlayLink account restriction'
+            || message.subject === 'Appeal decision')
+          .map((message) => ({
+            id: `moderation:${message.id}`,
+            kind: 'moderation',
+            title: message.subject,
+            body: (message.body || '').split('\n')[0],
+            href: '/messages',
+            created_at: message.created_at,
+          })))
+      }
+      if (role === 'player') {
+        const [teamResult, eventsResult, ownedTeamsResult] = await Promise.all([
+          supabase.from('community_teams').select('id,name,created_at,owner_id')
+            .eq('is_active', true).eq('is_public', true).neq('owner_id', user.id)
+            .order('created_at', { ascending: false }).limit(20),
+          supabase.from('events').select('id,title,created_at,organizer_id')
+            .in('status', ['open', 'full']).neq('organizer_id', user.id)
+            .order('created_at', { ascending: false }).limit(20),
+          supabase.from('community_teams').select('id,name').eq('owner_id', user.id),
+        ])
+        if (teamResult.error) throw teamResult.error
+        if (eventsResult.error) throw eventsResult.error
+        if (ownedTeamsResult.error) throw ownedTeamsResult.error
+        nextActivities.push(...(eventsResult.data || []).map((event) => ({
+          id: `new-event:${event.id}`,
+          kind: 'event',
+          title: 'New event posted',
+          body: event.title,
+          href: `/events/${event.id}`,
+          created_at: event.created_at,
         })))
+        nextActivities.push(...(teamResult.data || []).map((team) => ({
+          id: `new-team:${team.id}`,
+          kind: 'team',
+          title: 'New team created',
+          body: team.name,
+          href: '/teams',
+          created_at: team.created_at,
+        })))
+        if (ownedTeamsResult.data?.length) {
+          const { data: requests, error: requestError } = await supabase.from('team_invitations')
+            .select('id, team_id, created_at')
+            .in('team_id', ownedTeamsResult.data.map((team) => team.id))
+            .eq('kind', 'request')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+          if (requestError) throw requestError
+          const teamNames = new Map(ownedTeamsResult.data.map((team) => [team.id, team.name]))
+          nextActivities.push(...(requests || []).map((request) => ({
+            id: `team-request:${request.id}`,
+            kind: 'team_request',
+            title: 'New request to join your team',
+            body: teamNames.get(request.team_id) || 'Open team requests to review this player.',
+            href: '/teams?tab=invitations',
+            created_at: request.created_at,
+          })))
+        }
       }
       nextActivities.sort((first, second) => new Date(second.created_at || 0) - new Date(first.created_at || 0))
       if (initialized.current) {

@@ -1,5 +1,6 @@
 import Brand from './Brand.jsx'
 import Icon from './Icon.jsx'
+import InlineDirectionsMap from './InlineDirectionsMap.jsx'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext.jsx'
@@ -15,12 +16,14 @@ const navigation = [
   { href: '/venues', label: 'Venues', icon: 'venue' },
   { href: '/favorite-venues', label: 'Favorite venues', icon: 'heart' },
   { href: '/events', label: 'Events', icon: 'calendar' },
+  { href: '/live-scores', label: 'Live scores', icon: 'chart' },
   { href: '/teams', label: 'Teams', icon: 'teams' },
   { href: '/players', label: 'Players', icon: 'player' },
 ]
 
 const accountNavigation = [
   { href: '/messages', label: 'Messages', icon: 'message' },
+  { href: '/messages?contact=admin', label: 'Contact admin', icon: 'shield-check' },
   { href: '/settings', label: 'Settings', icon: 'settings' },
 ]
 
@@ -41,6 +44,10 @@ export default function DashboardShell({ path, search, onSearch, children }) {
   const activity = useActivityNotifications({ user, role: 'player', path, notificationOpen: openPanel === 'notifications' })
   const displayName = profile?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Guest player'
   const avatarUrl = profile?.avatar_url || user?.user_metadata?.avatar_url
+  const currentPageName = routeLocation.search.includes('contact=admin') && path === '/messages'
+    ? 'Contact admin'
+    : [...navigation, ...accountNavigation].find((item) => item.href === path)?.label
+      || (path === '/nearby' ? 'Nearby venues' : path === '/profile' ? 'Profile' : 'Home')
 
   useEffect(() => {
     if (new URLSearchParams(routeLocation.search).get('notifications') === '1') {
@@ -282,7 +289,7 @@ export default function DashboardShell({ path, search, onSearch, children }) {
 
   return (
     <div className="dashboard-app">
-      <aside className={`dashboard-sidebar${menuOpen ? ' dashboard-sidebar-open' : ''}`}>
+      <aside id="dashboard-navigation" className={`dashboard-sidebar${menuOpen ? ' dashboard-sidebar-open' : ''}`}>
         <Brand light href="/dashboard" />
         <span className="dashboard-sidebar-heading">PLAYLINK</span>
         <nav className="dashboard-side-links" aria-label="PlayLink dashboard">
@@ -291,7 +298,13 @@ export default function DashboardShell({ path, search, onSearch, children }) {
         <nav className="dashboard-side-links dashboard-account-links" aria-label="Account navigation">
           {accountNavigation.map((item) => item.href === '/notifications'
             ? <button key={item.href} type="button" className={openPanel === 'notifications' ? 'active' : ''} aria-expanded={openPanel === 'notifications'} onClick={() => { setMenuOpen(false); setOpenPanel((current) => current === 'notifications' ? '' : 'notifications') }}><span><Icon name={item.icon} size={18} /></span>{item.label}{activity.unreadCount > 0 && <small className="activity-badge">{activity.formatCount(activity.unreadCount)}</small>}</button>
-            : <a key={item.href} href={item.href} className={path === item.href ? 'active' : ''} aria-current={path === item.href ? 'page' : undefined} onClick={() => setMenuOpen(false)}><span><Icon name={item.icon} size={18} /></span>{item.label}{item.href === '/messages' && activity.unreadMessages > 0 && <small className="activity-badge">{activity.formatCount(activity.unreadMessages)}</small>}</a>)}
+            : (() => {
+              const contactAdmin = new URLSearchParams(routeLocation.search).get('contact') === 'admin'
+              const isActive = path === item.href
+                || (item.href === '/messages' && path === '/messages' && !contactAdmin)
+                || (item.href === '/messages?contact=admin' && path === '/messages' && contactAdmin)
+              return <a key={item.href} href={item.href} className={isActive ? 'active' : ''} aria-current={isActive ? 'page' : undefined} onClick={() => setMenuOpen(false)}><span>{item.href === '/settings' ? <img src="/settings-icon.png" alt="" /> : <Icon name={item.icon} size={18} />}</span>{item.label}{item.href === '/messages' && activity.unreadMessages > 0 && <small className="activity-badge">{activity.formatCount(activity.unreadMessages)}</small>}</a>
+            })())}
         </nav>
         <div className="dashboard-side-promo">
           <span className="promo-symbol">◎</span>
@@ -299,13 +312,13 @@ export default function DashboardShell({ path, search, onSearch, children }) {
           <p>Connect, play, and meet new friends on PlayLink.</p>
           <a href="/get-started">Get started <span>↗</span></a>
         </div>
-        <small className="dashboard-side-foot">PLAYLINK · PHASE 1 DEMO</small>
+        <small className="dashboard-side-foot">PLAYLINK · {currentPageName.toUpperCase()}</small>
       </aside>
       {menuOpen && <button className="dashboard-sidebar-backdrop" type="button" aria-label="Dismiss dashboard menu" onClick={() => setMenuOpen(false)} />}
 
       <div className="dashboard-content">
         <header className="dashboard-topbar">
-          <button className="dashboard-menu-toggle" type="button" aria-label={menuOpen ? 'Close dashboard menu' : 'Open dashboard menu'} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><Icon name="menu" size={17} /></button>
+          <button className="dashboard-menu-toggle" type="button" aria-label={menuOpen ? 'Close dashboard menu' : 'Open dashboard menu'} aria-controls="dashboard-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><Icon name="menu" size={19} /></button>
           <label className="dashboard-search"><span aria-hidden="true"><Icon name="search" size={16} /></span><input value={search} onChange={(event) => onSearch?.(event.target.value)} placeholder="Search venues, events, teams or players..." aria-label="Search this page" /><kbd>⌘ K</kbd></label>
           <button className="dashboard-region" type="button" aria-expanded={openPanel === 'location'} onClick={() => setOpenPanel(openPanel === 'location' ? '' : 'location')}><span><Icon name="pin" size={16} /></span><span className="dashboard-region-label">{visibleLocationName(profile?.home_location || location?.label, 'Kathmandu')}</span><Icon name="chevron-down" size={13} /></button>
           <button className="dashboard-notification-link" type="button" aria-label={`Notifications${activity.unreadCount ? ` (${activity.unreadCount} unread)` : ''}`} aria-expanded={openPanel === 'notifications'} onClick={() => setOpenPanel(openPanel === 'notifications' ? '' : 'notifications')}><Icon name="bell" size={17} />{activity.unreadCount > 0 && <small className="activity-badge">{activity.formatCount(activity.unreadCount)}</small>}</button>
@@ -315,8 +328,7 @@ export default function DashboardShell({ path, search, onSearch, children }) {
         </header>
         {openPanel === 'location' && <section className="dashboard-topbar-popover dashboard-location-popover" aria-label="Your location">
           <div className="dashboard-popover-heading"><span><Icon name="map" size={18} /></span><div><b>Your location</b><small>{visibleLocationName(location?.label, 'Location is not being shared')}</small></div><button type="button" aria-label="Close location panel" onClick={() => setOpenPanel('')}>×</button></div>
-          {location ? <iframe title="Map centered on your location" src={`https://maps.google.com/maps?q=${location.latitude},${location.longitude}&z=15&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" /> : <div className="dashboard-location-empty"><Icon name="pin" size={23} /><b>See yourself on the map</b><span>Use live location to request GPS. Google Maps receives those coordinates to show your position.</span></div>}
-          {location && <a className="dashboard-map-link" href={`https://www.google.com/maps/search/?api=1&query=${location.latitude},${location.longitude}`} target="_blank" rel="noreferrer">Open in Google Maps ↗</a>}
+          {location ? <InlineDirectionsMap className="dashboard-location-map" origin={[location.longitude, location.latitude]} statusMessage="Your location is marked on this PlayLink map." /> : <div className="dashboard-location-empty"><Icon name="pin" size={23} /><b>See yourself on the map</b><span>Use live location to request GPS. Your location is displayed on the PlayLink map.</span></div>}
           {locationMessage && <p className="dashboard-popover-message" role="status">{locationMessage}</p>}
           <div className="dashboard-popover-actions"><button className="button button-secondary" type="button" onClick={findCurrentLocation} disabled={locationBusy}>{locationBusy ? 'Finding you…' : 'Use live location'}</button><button className="button button-primary" type="button" onClick={saveLocation} disabled={locationBusy || !location}>Save location</button></div>
         </section>}
@@ -325,12 +337,12 @@ export default function DashboardShell({ path, search, onSearch, children }) {
           {notificationsBusy ? <p className="dashboard-notification-empty" role="status">Loading activity…</p>
             : notificationError || activity.error ? <p className="dashboard-notification-empty is-error" role="alert">{notificationError || activity.error}</p>
               : notifications.length || activity.activities.length ? <div className="dashboard-notification-list">
-                {activity.activities.slice(0, 8).map((item) => <Link key={item.id} to={item.href} onClick={() => setOpenPanel('')}><span className={`dashboard-notification-status ${item.kind === 'message' ? 'status-open' : 'status-pending'}`}><Icon name={item.kind === 'message' ? 'message' : item.kind === 'team_request' ? 'teams' : 'calendar'} size={16} /></span><span><b>{item.title}</b><small>{item.body} · {new Date(item.created_at).toLocaleDateString()}</small></span></Link>)}
+                {activity.activities.slice(0, 8).map((item) => <Link key={item.id} to={item.href} onClick={() => setOpenPanel('')}><span className={`dashboard-notification-status ${item.kind === 'message' ? 'status-open' : item.kind === 'moderation' ? 'status-pending' : 'status-pending'}`}><Icon name={item.kind === 'moderation' ? 'shield-check' : item.kind === 'message' ? 'message' : item.kind === 'team_request' || item.kind === 'team' ? 'teams' : 'calendar'} size={16} /></span><span><b>{item.title}</b><small>{item.body} · {new Date(item.created_at).toLocaleDateString()}</small></span></Link>)}
                 {notifications.slice(0, Math.max(0, 8 - activity.activities.length)).map((item) => <Link key={`${item.id}-${item.organizerAction ? 'organizer' : 'player'}`} to={`/events/${item.event_id}`} onClick={() => setOpenPanel('')}><span className={`dashboard-notification-status status-${item.status}`}><Icon name={item.organizerAction ? 'teams' : 'calendar'} size={16} /></span><span><b>{item.organizerAction ? `${item.team_name} wants to join` : `${item.title}: ${item.status}`}</b><small>{item.organizerAction ? item.title : `Team ${item.team_name}`} · {new Date(item.created_at).toLocaleDateString()}</small></span></Link>)}
               </div>
                 : <p className="dashboard-notification-empty"><b>You’re all caught up.</b><span>New booking updates, venue messages, and event activity will show here.</span></p>}
         </section>}
-        {activity.notice && <Link className="dashboard-activity-toast" to={activity.notice.href} onClick={() => { activity.markRead(activity.notice.kind); activity.dismissNotice() }}><span><Icon name={activity.notice.kind === 'message' ? 'message' : activity.notice.kind === 'team_request' ? 'teams' : 'calendar'} size={16} /></span><b>{activity.notice.title}</b><small>{activity.notice.body}</small><button type="button" aria-label="Dismiss notification" onClick={(event) => { event.preventDefault(); event.stopPropagation(); activity.dismissNotice() }}><Icon name="close" size={14} /></button></Link>}
+        {activity.notice && <Link className="dashboard-activity-toast" to={activity.notice.href} onClick={() => { activity.markRead(activity.notice.kind); activity.dismissNotice() }}><span><Icon name={activity.notice.kind === 'moderation' ? 'shield-check' : activity.notice.kind === 'message' ? 'message' : activity.notice.kind === 'team_request' || activity.notice.kind === 'team' ? 'teams' : 'calendar'} size={16} /></span><b>{activity.notice.title}</b><small>{activity.notice.body}</small><button type="button" aria-label="Dismiss notification" onClick={(event) => { event.preventDefault(); event.stopPropagation(); activity.dismissNotice() }}><Icon name="close" size={14} /></button></Link>}
         {accountError && <p className="dashboard-account-error" role="alert">{accountError}</p>}
         <main className="dashboard-main">{children}</main>
       </div>

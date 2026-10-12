@@ -3,8 +3,11 @@ import { Link, useLocation } from 'react-router-dom'
 import DashboardShell from '../components/DashboardShell.jsx'
 import Icon from '../components/Icon.jsx'
 import Modal from '../components/Modal.jsx'
+import SocialLinks from '../components/SocialLinks.jsx'
+import ReportUserButton from '../components/ReportUserButton.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { supabase } from '../auth/supabase.js'
+import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
 
 const levels = ['Any level', 'Beginner', 'Intermediate', 'Advanced', 'Competitive', 'All levels']
 const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -46,6 +49,11 @@ function initials(value = '') {
   return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join('') || 'PL'
 }
 
+function sportIcon(sport = '') {
+  const normalized = sport.toLowerCase()
+  return normalized === 'cricket' ? 'cricket' : normalized === 'futsal' ? 'futsal' : 'player'
+}
+
 function openSpotsFor(team) {
   return Math.max(0, Number(team?.members_needed) || 0)
 }
@@ -60,8 +68,8 @@ function ListingCard({ item, mode, onView, currentUserId, onRequestJoin, joinReq
   return (
     <article className={`community-listing-card ${isTeam ? 'team-listing-card' : 'player-listing-card player-profile-card'}`}>
       {isTeam ? <div className="community-listing-photo team-listing-photo">
-        <span className="team-sport-chip"><Icon name={item.sport === 'Cricket' ? 'cricket' : 'futsal'} size={13} />{item.sport}</span>
-        <span className="team-crest" aria-hidden="true"><Icon name={item.sport === 'Cricket' ? 'cricket' : 'futsal'} size={20} /></span>
+        <span className="team-sport-chip"><Icon name={sportIcon(item.sport)} size={13} />{item.sport}</span>
+        <span className="team-crest" aria-hidden="true"><Icon name={sportIcon(item.sport)} size={20} /></span>
       </div> : <div className="player-card-identity">
         <div className="player-avatar">{item.avatar_url ? <img src={item.avatar_url} alt={`${name} profile`} /> : <span>{initials(name)}</span>}</div>
         <div className="player-card-name"><div className="player-card-name-line"><h2>{name}</h2>{isOwnPlayerListing && <span className="player-you-badge">You</span>}</div><span>{item.position || 'Player'}</span></div>
@@ -69,8 +77,9 @@ function ListingCard({ item, mode, onView, currentUserId, onRequestJoin, joinReq
       <div className="community-listing-body">
         {isTeam ? <div className="team-listing-heading"><h2>{name}</h2><span className={`recruiting-chip${isRecruiting ? '' : ' not-recruiting'}`}>{teamStatus}</span></div> : null}
         <div className={isTeam ? 'team-listing-location' : 'player-profile-location'}><Icon name="pin" size={12} />{item.area}</div>
-        {!isTeam && <div className="player-sports-tags"><span><Icon name={item.sport === 'Cricket' ? 'cricket' : 'futsal'} size={12} />{item.sport}</span></div>}
+        {!isTeam && <div className="player-sports-tags"><span><Icon name={sportIcon(item.sport)} size={12} />{item.sport || 'Sport not specified'}</span></div>}
         <p className="community-listing-desc">{item.description || (isTeam ? 'No team introduction provided.' : 'No player introduction provided.')}</p>
+        {!isTeam && <SocialLinks profile={item} className="community-player-socials" />}
         <div className={isTeam ? 'community-listing-tags team-listing-tags' : 'player-day-chips'}>
           <span>{item.level}</span>
           {isTeam ? <span>{openSpots > 0 ? `${openSpots} spots open` : 'Team full'}</span> : item.looking_for_team && <span>Looking for a team</span>}
@@ -105,6 +114,7 @@ function ListingCard({ item, mode, onView, currentUserId, onRequestJoin, joinReq
 export default function Community({ mode: initialMode = 'teams' }) {
   const isTeams = initialMode === 'teams'
   const { user } = useAuth()
+  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
   const routeLocation = useLocation()
   const [teams, setTeams] = useState([])
   const [invitations, setInvitations] = useState([])
@@ -229,20 +239,28 @@ export default function Community({ mode: initialMode = 'teams' }) {
         return
       }
       const playerListings = data || []
-      if (!playerListings.length) {
-        setPlayers([])
-        return
-      }
-      const { data: avatars, error: avatarError } = await supabase.rpc('get_public_player_avatars', {
-        requested_user_ids: playerListings.map((listing) => listing.user_id),
-      })
-      if (avatarError) throw avatarError
+      const { data: profiles, error: profilesError } = await supabase.rpc('get_public_player_profiles')
+      if (profilesError) throw profilesError
       if (!active) return
-      const avatarByUserId = new Map((avatars || []).map((profile) => [profile.user_id, profile.avatar_url]))
-      setPlayers(playerListings.map((listing) => ({
-        ...listing,
-        avatar_url: avatarByUserId.get(listing.user_id) || '',
-      })))
+      const listingByUserId = new Map(playerListings.map((listing) => [listing.user_id, listing]))
+      setPlayers((profiles || []).map((profile) => {
+        const listing = listingByUserId.get(profile.user_id)
+        return {
+          ...listing,
+          ...profile,
+          id: listing?.id || profile.user_id,
+          user_id: profile.user_id,
+          display_name: listing?.display_name || profile.display_name || profile.username,
+          sport: listing?.sport || '',
+          area: listing?.area || 'Location not provided',
+          level: listing?.level || 'Not specified',
+          position: listing?.position || '',
+          availability: listing?.availability || 'Not specified',
+          description: listing?.description || '',
+          available_days: listing?.available_days || [],
+          looking_for_team: listing?.looking_for_team || false,
+        }
+      }))
     }).catch((loadError) => {
       if (active) setError(teamFeatureError(loadError))
     }).finally(() => {
@@ -330,9 +348,9 @@ export default function Community({ mode: initialMode = 'teams' }) {
       const text = `${name} ${item.sport} ${item.area} ${item.position || ''} ${item.description || ''}`.toLowerCase()
       return (!search || text.includes(search.toLowerCase()))
         && (sport === 'Any sport' || item.sport === sport)
-        && (!location || item.area.toLowerCase().includes(location.toLowerCase()))
-        && (level === 'Any level' || item.level === level)
-        && (availability === 'Any time' || item.availability === availability)
+        && (!location || String(item.area || '').toLowerCase().includes(location.toLowerCase()))
+        && (level === 'Any level' || item.level === level || item.level === 'Not specified')
+        && (availability === 'Any time' || item.availability === availability || item.availability === 'Not specified')
         && (!availableDay || item.available_days?.includes(availableDay))
         && (!lookingForTeamOnly || item.looking_for_team)
         && (!isTeams || recruitingFilter === 'all' || (recruitingFilter === 'recruiting'
@@ -581,7 +599,7 @@ export default function Community({ mode: initialMode = 'teams' }) {
           <section className="community-feed">
             {!(isTeams && teamTab === 'invitations') && <><div className="community-filter-bar">
               <label className="community-filter-search"><Icon name="search" size={16} /><input aria-label={`Search ${isTeams ? 'teams' : 'players'}`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${isTeams ? 'teams' : 'players'}...`} /></label>
-              <label><small>Sport</small><select value={sport} onChange={(event) => setSport(event.target.value)}><option>Any sport</option><option>Futsal</option><option>Cricket</option></select></label>
+              <label><small>Sport</small><select value={sport} onChange={(event) => setSport(event.target.value)}><option>Any sport</option>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}</select></label>
               <label><small>Location / Area</small><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Any area" /></label>
               <label><small>Skill level</small><select value={level} onChange={(event) => setLevel(event.target.value)}>{levels.map((item) => <option key={item}>{item}</option>)}</select></label>
               {isTeams ? <label><small>Recruiting</small><select value={recruitingFilter} onChange={(event) => setRecruitingFilter(event.target.value)}><option value="all">All teams</option><option value="recruiting">Recruiting</option><option value="closed">Not recruiting</option></select></label>
@@ -591,6 +609,7 @@ export default function Community({ mode: initialMode = 'teams' }) {
             {!isTeams && <div className="community-filter-bar"><label><small>Availability</small><select value={availability} onChange={(event) => setAvailability(event.target.value)}><option>Any time</option><option>Weeknights</option><option>Weekends</option><option>Flexible</option></select></label><label><small>Day</small><select value={availableDay} onChange={(event) => setAvailableDay(event.target.value)}><option value="">Any day</option>{weekdays.map((day) => <option key={day}>{day}</option>)}</select></label><label className="player-team-only"><input type="checkbox" checked={lookingForTeamOnly} onChange={(event) => setLookingForTeamOnly(event.target.checked)} /><span>Looking for a team</span></label><button className="button button-primary community-create-button" type="button" onClick={() => user ? openListingForm() : setError('Sign in to publish a player profile.')}><Icon name="player" size={15} /> Publish profile</button></div>}
             <div className="community-feed-heading"><span>Showing <b>{isTeams && teamTab === 'invitations' ? invitations.length : listings.length}</b> {collectionName}</span>{!(isTeams && teamTab === 'invitations') && <div><span>Sort by:</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option>Newest first</option><option>A–Z</option></select><button type="button" onClick={resetFilters}>Clear filters</button></div>}</div></>}
             {error && <p className="venue-favorite-error" role="alert">{error}</p>}
+            {sportsError && <p className="venue-favorite-error" role="alert">{sportsError}</p>}
             {notice && <p className="venue-feedback-success" role="status">{notice}</p>}
             <div className={`community-listing-grid ${isTeams ? 'teams-listing-grid' : 'players-listing-grid'}`}>
               {loading ? <div className="empty-state" role="status">Loading community listings…</div> : isTeams && teamTab === 'invitations'
@@ -631,13 +650,13 @@ export default function Community({ mode: initialMode = 'teams' }) {
                   joinRequestPending={teamJoinRequestIds.includes(item.id) || requestingTeamId === item.id}
                   isMember={teamMembershipIds.includes(item.id)}
                 />)}
-              {!loading && (isTeams && teamTab === 'invitations' ? !invitations.length : !listings.length) && <div className="empty-state"><span><Icon name={isTeams ? 'teams' : 'player'} size={24} /></span><h2>{isTeams && teamTab === 'mine' ? 'You have not published any teams' : isTeams && teamTab === 'invitations' ? 'No invitations or join requests yet' : `No ${isTeams ? 'teams' : 'players'} yet`}</h2><p>{isTeams && teamTab === 'mine' ? 'Create a team listing to make it visible to players.' : isTeams && teamTab === 'invitations' ? 'Player invitations and requests to join your teams will appear here.' : 'Listings appear here when community members publish real profiles.'}</p>{teamTab !== 'invitations' && <button className="button button-outline" type="button" onClick={resetFilters}>Clear filters</button>}</div>}
+              {!loading && (isTeams && teamTab === 'invitations' ? !invitations.length : !listings.length) && <div className="empty-state"><span><Icon name={isTeams ? 'teams' : 'player'} size={24} /></span><h2>{isTeams && teamTab === 'mine' ? 'You have not published any teams' : isTeams && teamTab === 'invitations' ? 'No invitations or join requests yet' : `No ${isTeams ? 'teams' : 'players'} yet`}</h2><p>{isTeams && teamTab === 'mine' ? 'Create a team listing to make it visible to players.' : isTeams && teamTab === 'invitations' ? 'Player invitations and requests to join your teams will appear here.' : 'Registered players appear here as soon as they create an account.'}</p>{teamTab !== 'invitations' && <button className="button button-outline" type="button" onClick={resetFilters}>Clear filters</button>}</div>}
             </div>
           </section>
           <aside className={`community-aside${isTeams ? ' teams-community-aside' : ' players-community-aside'}`}>
             {isTeams ? <section className="community-create-panel"><span className="community-create-icon"><Icon name="teams" size={21} /></span><h2>Create Your Team</h2><p>Any player can create a team, invite teammates, and control whether it is listed publicly.</p>{user ? <button type="button" className="button button-primary" onClick={openListingForm}><Icon name="add" size={15} /> Create Team</button> : <Link className="button button-primary" to="/sign-in">Sign in to create</Link>}</section>
-              : <section className="player-profile-cta"><span><Icon name="player" size={21} /></span><div><h2>Looking for teammates?</h2><p>Publish your player profile to help nearby teams discover you.</p>{user ? <button type="button" onClick={openListingForm}>Publish profile <Icon name="arrow-right" size={13} /></button> : <Link to="/sign-in">Sign in to publish</Link>}</div></section>}
-            <section className="dashboard-side-card popular-community-sports"><div className="dashboard-aside-heading"><h2>Browse by sport</h2><button type="button" onClick={() => setSport('Any sport')}>View all</button></div>{['Futsal', 'Cricket'].map((item) => <button key={item} type="button" onClick={() => setSport(sport === item ? 'Any sport' : item)}><span className={`popular-sport-icon${item === 'Cricket' ? ' cricket-sport-icon' : ''}`}><Icon name={item === 'Cricket' ? 'cricket' : 'futsal'} size={18} /></span><b>{item}<small>{allListings.filter((listing) => listing.sport === item).length} listings</small></b><Icon name="chevron-right" size={14} /></button>)}</section>
+              : <section className="player-profile-cta"><span><Icon name="player" size={21} /></span><div><h2>Looking for teammates?</h2><p>All player accounts are listed automatically. Add a player listing to share your sport, availability, and more.</p>{user ? <button type="button" onClick={openListingForm}>Complete player listing <Icon name="arrow-right" size={13} /></button> : <Link to="/sign-in">Sign in to publish</Link>}</div></section>}
+            <section className="dashboard-side-card popular-community-sports"><div className="dashboard-aside-heading"><h2>Browse by sport</h2><button type="button" onClick={() => setSport('Any sport')}>View all</button></div>{sportOptions.map((item) => <button key={item.slug} type="button" onClick={() => setSport(sport === item.name ? 'Any sport' : item.name)}><span className={`popular-sport-icon${item.slug === 'cricket' ? ' cricket-sport-icon' : ''}`}><Icon name={item.slug === 'cricket' ? 'cricket' : item.slug === 'futsal' ? 'futsal' : 'player'} size={18} /></span><b>{item.name}<small>{allListings.filter((listing) => listing.sport === item.name).length} listings</small></b><Icon name="chevron-right" size={14} /></button>)}</section>
           </aside>
         </div>
       </div>
@@ -645,7 +664,7 @@ export default function Community({ mode: initialMode = 'teams' }) {
         <p className="modal-lead">This information will be stored in PlayLink and visible to other users. Do not include private contact details.</p>
         <form className="demo-form" onSubmit={createListing}>
           <label>{isTeams ? 'Team name' : 'Display name'}<input name={isTeams ? 'name' : 'display_name'} required minLength="2" maxLength="80" defaultValue={editingTeam?.name || (!isTeams ? user?.user_metadata?.full_name || '' : '')} /></label>
-          <div className="form-row"><label>Sport<select name="sport" required defaultValue={editingTeam?.sport || ''}><option value="" disabled>Select a sport</option><option>Futsal</option><option>Cricket</option></select></label><label>Skill level<select name="level" required defaultValue={editingTeam?.level || ''}><option value="" disabled>Select level</option>{levels.slice(1).map((item) => <option key={item}>{item}</option>)}</select></label></div>
+          <div className="form-row"><label>Sport<select name="sport" required defaultValue={editingTeam?.sport || ''}><option value="" disabled>Select a sport</option>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}</select></label><label>Skill level<select name="level" required defaultValue={editingTeam?.level || ''}><option value="" disabled>Select level</option>{levels.slice(1).map((item) => <option key={item}>{item}</option>)}</select></label></div>
           <div className="form-row"><label>Area<input name="area" required minLength="2" maxLength="160" placeholder="City or neighborhood" defaultValue={editingTeam?.area || ''} /></label><label>Availability<select name="availability" required defaultValue={editingTeam?.availability || ''}><option value="" disabled>Select availability</option><option>Weeknights</option><option>Weekends</option><option>Flexible</option></select></label></div>
           {isTeams ? <>
             <label>Open player spots<input name="members_needed" type="number" min="0" max="100" defaultValue={editingTeam?.members_needed ?? 1} /></label>
@@ -689,11 +708,12 @@ export default function Community({ mode: initialMode = 'teams' }) {
             </div>}
           </> : <><label>Position / role<input name="position" maxLength="80" placeholder="Optional" /></label><label className="player-team-only"><input name="looking_for_team" type="checkbox" defaultChecked /><span>Looking for a team</span></label></>}
           <fieldset><legend>Available days</legend><div className="player-day-choices">{weekdays.map((day) => <label key={day}><input type="checkbox" name="available_days" value={day} defaultChecked={editingTeam?.available_days?.includes(day) || false} />{day}</label>)}</div></fieldset>
-          <label>Introduction<textarea name="description" rows="3" maxLength="500" placeholder="Share relevant details" defaultValue={editingTeam?.description || ''} /></label>
+          <label>Introduction<textarea className="fixed-scroll-textarea" name="description" rows="3" maxLength="500" placeholder="Share relevant details" defaultValue={editingTeam?.description || ''} /></label>
           <button className="button button-primary button-full" type="submit" disabled={saving}>{saving ? (editingTeam ? 'Saving changes…' : 'Publishing…') : editingTeam ? 'Save changes' : 'Publish listing'}</button>
         </form>
       </Modal>}
       {selected && <Modal eyebrow={isTeams ? 'TEAM LISTING' : selected.user_id === user?.id ? 'YOUR PLAYER PROFILE' : 'PLAYER PROFILE'} title={isTeams ? selected.name : selected.display_name} onClose={() => { setSelected(null); setNotice(''); setError('') }}>
+        {!isTeams && <div className="community-player-profile-modal-head"><span className="player-avatar">{selected.avatar_url ? <img src={selected.avatar_url} alt={`${selected.display_name} profile`} /> : <span>{initials(selected.display_name)}</span>}</span><div><b>@{selected.username}</b><SocialLinks profile={selected} /></div></div>}
         <p className="modal-lead">{selected.description || 'No introduction provided.'}</p>
         <div className="detail-facts"><span><small>SPORT</small><b>{selected.sport}</b></span><span><small>AREA</small><b>{selected.area}</b></span><span><small>LEVEL</small><b>{selected.level}</b></span><span><small>AVAILABILITY</small><b>{selected.availability}</b></span></div>
         {notice && <p className="venue-feedback-success" role="status">{notice}</p>}
@@ -722,6 +742,7 @@ export default function Community({ mode: initialMode = 'teams' }) {
         </div>}
         {!isTeams && selected.user_id !== user?.id && <div className="community-player-message-action">
           {user ? <Link className="button button-primary" to={`/messages?player_id=${encodeURIComponent(selected.user_id)}`}><Icon name="message" size={14} /> Message player</Link> : <Link className="button button-primary" to={`/sign-in?next=${encodeURIComponent(`/messages?player_id=${selected.user_id}`)}`}><Icon name="message" size={14} /> Sign in to message</Link>}
+          {user && <ReportUserButton targetUserId={selected.user_id} targetName={selected.display_name || 'player'} />}
         </div>}
         {!isTeams && user && selected.user_id !== user.id && canCreateTeam && <section className="community-team-invite-form">
           <label htmlFor="invite-player-team">Invite to join your team</label>

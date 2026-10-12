@@ -5,13 +5,8 @@ import DashboardShell from '../components/DashboardShell.jsx'
 import Icon from '../components/Icon.jsx'
 import Modal from '../components/Modal.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
+import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
 import { eventErrorMessage, eventStatusLabel, formatEventDate, getOwnAccountType, localDateTimeToIso, supabase } from '../data/eventApi.js'
-
-const sports = [
-  { label: 'All events', value: '', icon: 'calendar' },
-  { label: 'Futsal', value: 'futsal', icon: 'futsal' },
-  { label: 'Cricket', value: 'cricket', icon: 'cricket' },
-]
 
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -25,14 +20,15 @@ function localDateKey(value) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function EventCard({ event }) {
+function EventCard({ event, sports }) {
   const openSpots = Math.max(0, event.max_teams - event.team_count)
+  const sport = sports.find((item) => item.slug === event.sport_type)
   const image = event.sport_type === 'cricket' ? 'fut2.png' : 'fut1.png'
   return (
     <article className="dashboard-event-card event-live-card">
       <div className="dashboard-event-photo" style={{ backgroundImage: `linear-gradient(180deg,rgba(6,35,48,.04),rgba(6,35,48,.28)),url("/sports/${image}")` }}>
         <span className={`event-status-chip event-status-${event.status}`}>{eventStatusLabel(event.status)}</span>
-        <span className="event-card-sport"><Icon name={event.sport_type === 'futsal' ? 'futsal' : 'cricket'} size={13} />{event.sport_type === 'futsal' ? 'Futsal' : 'Cricket'}</span>
+        <span className="event-card-sport"><Icon name={event.sport_type === 'cricket' ? 'cricket' : event.sport_type === 'futsal' ? 'futsal' : 'player'} size={13} />{sport?.name || event.sport_type}</span>
       </div>
       <div className="dashboard-event-body">
         <div className="dashboard-event-date"><Icon name="calendar" size={13} />{formatEventDate(event.start_time)}</div>
@@ -49,7 +45,7 @@ function EventCard({ event }) {
   )
 }
 
-function CreateEventForm({ busy, onSubmit, error }) {
+function CreateEventForm({ busy, onSubmit, error, sports }) {
   const today = new Date()
   const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   return (
@@ -57,7 +53,7 @@ function CreateEventForm({ busy, onSubmit, error }) {
       <p className="modal-lead">Publish a match for your community. Venue selection is not connected in this project yet, so enter a clear location or venue name.</p>
       <label>Event title<input name="title" required minLength="3" maxLength="100" placeholder="e.g. Sunday evening futsal" /></label>
       <div className="form-row">
-        <label>Sport<select name="sport_type" required defaultValue=""><option value="" disabled>Choose sport</option><option value="futsal">Futsal</option><option value="cricket">Cricket</option></select></label>
+        <label>Sport<select name="sport_type" required defaultValue=""><option value="" disabled>Choose sport</option>{sports.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></label>
         <label>Maximum teams<input name="max_teams" type="number" required min="1" max="64" defaultValue="4" /></label>
       </div>
       <label>Venue or location<input name="location_text" required minLength="2" maxLength="180" placeholder="Venue name or area, e.g. Patan, Lalitpur" /></label>
@@ -69,7 +65,7 @@ function CreateEventForm({ busy, onSubmit, error }) {
         <label>End time<input name="end_time" type="time" required /></label>
         <label>Your team name <span className="auth-optional">(optional)</span><input name="organizer_team_name" maxLength="80" placeholder="If your team is playing" /></label>
       </div>
-      <label>Description<textarea name="description" rows="4" maxLength="3000" placeholder="Share the format, experience level, or anything teams should know." /></label>
+      <label>Description<textarea className="fixed-scroll-textarea" name="description" rows="4" maxLength="3000" placeholder="Share the format, experience level, or anything teams should know." /></label>
       {error && <p className="event-feedback error" role="alert">{error}</p>}
       <button className="button button-primary button-full" type="submit" disabled={busy}>{busy ? 'Publishing event…' : 'Publish event'}</button>
     </form>
@@ -78,6 +74,12 @@ function CreateEventForm({ busy, onSubmit, error }) {
 
 export default function EventsHub() {
   const { user } = useAuth()
+  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
+  const sports = [{ label: 'All events', value: '', icon: 'calendar' }, ...sportOptions.map((item) => ({
+    label: item.name,
+    value: item.slug,
+    icon: item.slug === 'cricket' ? 'cricket' : item.slug === 'futsal' ? 'futsal' : 'player',
+  }))]
   const [search, setSearch] = useState(new URLSearchParams(window.location.search).get('q') || '')
   const [sport, setSport] = useState('')
   const [location, setLocation] = useState('')
@@ -125,7 +127,7 @@ export default function EventsHub() {
     .filter((event) => !['completed', 'cancelled'].includes(event.status) && new Date(event.start_time) >= today)
     .sort((first, second) => new Date(first.start_time) - new Date(second.start_time))[0], [events, today])
 
-  const canOrganize = Boolean(user && user.id !== 'playlink-local-demo' && ['team_organizer', 'venue_owner'].includes(accountType))
+  const canOrganize = Boolean(user && user.id !== 'playlink-local-demo' && ['player', 'team_organizer', 'venue_owner'].includes(accountType))
 
   useEffect(() => {
     let timer
@@ -253,11 +255,11 @@ export default function EventsHub() {
   async function createEvent(submitEvent) {
     submitEvent.preventDefault()
     if (!user) {
-      setCreateError('Sign in with an organizer account to publish an event.')
+      setCreateError('Sign in with a player, venue owner, or organizer account to publish an event.')
       return
     }
     if (!canOrganize) {
-      setCreateError('An organizer account is required. Local demo sessions cannot publish real events.')
+      setCreateError('A player, venue owner, or organizer account is required. Local demo sessions cannot publish real events.')
       return
     }
     const form = new FormData(submitEvent.currentTarget)
@@ -347,14 +349,14 @@ export default function EventsHub() {
               <label className="event-filter-search"><Icon name="search" size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search events..." aria-label="Search event titles and descriptions" /></label>
               <label><small>Location / Area</small><input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Any area" /></label>
               <label><small>Date</small><input value={date} onChange={(event) => setDate(event.target.value)} type="date" aria-label="Filter by event date" /></label>
-              <label><small>Sport</small><select value={sport} onChange={(event) => setSport(event.target.value)}><option value="">All sports</option><option value="futsal">Futsal</option><option value="cricket">Cricket</option></select></label>
+              <label><small>Sport</small><select value={sport} onChange={(event) => setSport(event.target.value)}><option value="">All sports</option>{sportOptions.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></label>
               <label><small>Status</small><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="upcoming">Upcoming</option><option value="open">Open</option><option value="full">Full</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="all">All events</option></select></label>
               <button className="button button-primary create-event-button" type="button" onClick={() => { setCreateError(''); setShowCreate(true) }}><Icon name="add" size={15} /> Create Event</button>
             </div>
             <div className="events-result-bar"><span>{loading ? 'Searching events…' : `Showing ${events.length} ${events.length === 1 ? 'event' : 'events'}`}</span><label className="events-spots-toggle"><input type="checkbox" checked={availableOnly} onChange={(event) => setAvailableOnly(event.target.checked)} /> Spots available</label><label>Sort by <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Newest first</option><option value="soonest">Soonest first</option><option value="title">Event name</option></select></label></div>
-            {error && <p className="event-feedback error" role="alert">{error}</p>}
+            {(error || sportsError) && <p className="event-feedback error" role="alert">{error || sportsError}</p>}
             {loading && !events.length ? <div className="event-loading" role="status">Loading events from PlayLink…</div>
-              : events.length ? <><div className="dashboard-event-grid">{sortedEvents.map((event) => <EventCard key={event.id} event={event} />)}</div>{hasMore && <button className="button button-outline event-load-more" type="button" disabled={loading || loadingMore} onClick={() => loadEvents(true)}>{loadingMore ? 'Loading more…' : 'Load more events'}</button>}</>
+              : events.length ? <><div className="dashboard-event-grid">{sortedEvents.map((event) => <EventCard key={event.id} event={event} sports={sportOptions} />)}</div>{hasMore && <button className="button button-outline event-load-more" type="button" disabled={loading || loadingMore} onClick={() => loadEvents(true)}>{loadingMore ? 'Loading more…' : 'Load more events'}</button>}</>
                 : !error && <div className="empty-state"><span><Icon name="calendar" size={24} /></span><h2>No events found</h2><p>There are no matching published events. Try changing your search or filters.</p><button className="button button-primary" type="button" onClick={clearFilters}>Clear filters</button></div>}
             <p className="dashboard-demo-caption">Events are read from Supabase. Locations are entered by organizers; venue booking is not included.</p>
           </section>
@@ -415,7 +417,7 @@ export default function EventsHub() {
         </div>,
         document.body,
       )}
-      {showCreate && <Modal eyebrow="PLAYLINK EVENTS" title="Create an event" onClose={() => setShowCreate(false)}><CreateEventForm busy={creating} error={createError} onSubmit={createEvent} /></Modal>}
+      {showCreate && <Modal eyebrow="PLAYLINK EVENTS" title="Create an event" onClose={() => setShowCreate(false)}><CreateEventForm busy={creating} error={createError} onSubmit={createEvent} sports={sportOptions} /></Modal>}
     </DashboardShell>
   )
 }

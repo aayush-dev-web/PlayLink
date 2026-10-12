@@ -8,6 +8,7 @@ import useVenueFavorites from '../hooks/useVenueFavorites.js'
 import VenueBookingSection from '../components/VenueBookingSection.jsx'
 import { supabase } from '../auth/supabase.js'
 import { getVenueImage } from '../data/venueImages.js'
+import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
 
 function publicVenue(venue) {
   return {
@@ -57,6 +58,7 @@ function VenueCard({ venue, onSelect, onDetails, selected, favorite, favoritePen
 
 export default function Venues() {
   const { pendingIds, error: favoriteError, isFavorite, toggleFavorite } = useVenueFavorites()
+  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
   const params = new URLSearchParams(window.location.search)
   const [location, setLocation] = useState(params.get('location') || '')
   const [globalSearch, setGlobalSearch] = useState('')
@@ -66,7 +68,6 @@ export default function Venues() {
   const [selected, setSelected] = useState(null)
   const [selectedDetail, setSelectedDetail] = useState(null)
   const [userCoordinates, setUserCoordinates] = useState(null)
-  const [directionMode, setDirectionMode] = useState('driving')
   const [locationMessage, setLocationMessage] = useState('')
   const [ownerVenues, setOwnerVenues] = useState([])
   const [venueLoading, setVenueLoading] = useState(true)
@@ -137,7 +138,7 @@ export default function Venues() {
   const filtered = useMemo(() => ownerVenues.filter((venue) => {
     const query = `${location} ${globalSearch}`.trim().toLowerCase()
     const matchesLocation = !query || `${venue.area} ${venue.name}`.toLowerCase().includes(query)
-    const matchesSport = sport === 'Any sport' || venue.sport === sport
+    const matchesSport = sport === 'Any sport' || venue.sport === sport || venue.sport === 'Both'
     const matchesPrice = price === 'Any price' || (price === 'Under NPR 2,500' ? Number(venue.price.replace(/\D/g, '')) < 2500 : Number(venue.price.replace(/\D/g, '')) >= 2500)
     return matchesLocation && matchesSport && matchesPrice
   }).sort((first, second) => sort === 'Price: low to high' ? Number(first.price.replace(/\D/g, '')) - Number(second.price.replace(/\D/g, '')) : sort === 'Top rated' ? second.rating - first.rating : 0), [location, globalSearch, ownerVenues, sport, price, sort])
@@ -154,10 +155,9 @@ export default function Venues() {
     <DashboardShell path="/venues" search={globalSearch} onSearch={setGlobalSearch}>
       <main className="venue-dashboard">
           <section className="venue-welcome">
-            <div className="venue-welcome-copy"><span className="eyebrow">YOUR NEXT GAME IS CLOSER THAN YOU THINK</span><h1>Find Your Perfect Venue</h1><p>Discover futsal and cricket venues, compare your options, and find a place for your next game.</p>
+            <div className="venue-welcome-copy"><span className="eyebrow">YOUR NEXT GAME IS CLOSER THAN YOU THINK</span><h1>Find Your Perfect Venue</h1><p>Discover local sports venues, compare your options, and find a place for your next game.</p>
               <div className="sport-switch" aria-label="Filter venues by sport">
-                <button type="button" className={sport === 'Futsal' ? 'sport-switch-button active' : 'sport-switch-button'} aria-pressed={sport === 'Futsal'} onClick={() => setSport(sport === 'Futsal' ? 'Any sport' : 'Futsal')}><Icon name="futsal" size={15} /> Futsal</button>
-                <button type="button" className={sport === 'Cricket' ? 'sport-switch-button active' : 'sport-switch-button'} aria-pressed={sport === 'Cricket'} onClick={() => setSport(sport === 'Cricket' ? 'Any sport' : 'Cricket')}><Icon name="cricket" size={15} /> Cricket</button>
+                {sportOptions.map((item) => <button key={item.slug} type="button" className={sport === item.name ? 'sport-switch-button active' : 'sport-switch-button'} aria-pressed={sport === item.name} onClick={() => setSport(sport === item.name ? 'Any sport' : item.name)}><Icon name={item.slug === 'cricket' ? 'cricket' : item.slug === 'futsal' ? 'futsal' : 'player'} size={15} /> {item.name}</button>)}
               </div>
             </div>
             <div className="welcome-court-art" aria-hidden="true" />
@@ -173,6 +173,7 @@ export default function Venues() {
             <section className="venue-main-column">
               <div className="venue-list-heading"><div><span className="result-caption"><b>{filtered.length}</b> active owner-listed venues</span></div><label className="sort-select">Sort by: <select value={sort} onChange={(event) => setSort(event.target.value)}><option>Recommended</option><option>Top rated</option><option>Price: low to high</option></select></label></div>
               {venueLoadError && <p className="venue-favorite-error" role="alert">{venueLoadError}</p>}
+              {sportsError && <p className="venue-favorite-error" role="alert">{sportsError}</p>}
               {favoriteError && <p className="venue-favorite-error" role="alert">{favoriteError}</p>}
               <div className="venue-results">
                 {venueLoading ? <div className="empty-state" role="status">Loading active venue listings…</div> : filtered.map((venue) => <VenueCard key={venue.id} venue={venue} selected={selected?.id === venue.id} favorite={isFavorite(venue.id)} favoritePending={pendingIds.includes(String(venue.id))} onFavorite={() => toggleFavorite(venue.id)} onSelect={() => setSelected(venue)} onDetails={() => { setSelected(venue); setSelectedDetail(venue) }} />)}
@@ -182,9 +183,9 @@ export default function Venues() {
             </section>
 
             <aside className="venue-dashboard-aside">
-              <VenueMap venues={filtered} selectedVenue={selected} onSelect={showVenue} userCoordinates={userCoordinates} directionMode={directionMode} onDirectionModeChange={setDirectionMode} onFindLocation={findUserLocation} locationMessage={locationMessage} />
+              <VenueMap venues={filtered} selectedVenue={selected} onSelect={showVenue} userCoordinates={userCoordinates} onFindLocation={findUserLocation} locationMessage={locationMessage} />
               <section className="venue-callout"><span className="callout-icon"><Icon name="futsal" size={19} /></span><div><b>Own a sports venue?</b><p>List your facility for local players.</p><Link to="/get-started">Create an owner account <span>→</span></Link></div></section>
-              <section className="popular-sports"><h2>Venues by sport</h2><div><button type="button" onClick={() => setSport(sport === 'Futsal' ? 'Any sport' : 'Futsal')}><span><Icon name="futsal" size={18} /></span><b>Futsal<small>{ownerVenues.filter((venue) => venue.sport === 'Futsal' || venue.sport === 'Both').length} venues</small></b></button><button type="button" onClick={() => setSport(sport === 'Cricket' ? 'Any sport' : 'Cricket')}><span><Icon name="cricket" size={18} /></span><b>Cricket<small>{ownerVenues.filter((venue) => venue.sport === 'Cricket' || venue.sport === 'Both').length} venues</small></b></button></div></section>
+              <section className="popular-sports"><h2>Venues by sport</h2><div>{sportOptions.map((item) => <button key={item.slug} type="button" onClick={() => setSport(sport === item.name ? 'Any sport' : item.name)}><span><Icon name={item.slug === 'cricket' ? 'cricket' : item.slug === 'futsal' ? 'futsal' : 'player'} size={18} /></span><b>{item.name}<small>{ownerVenues.filter((venue) => venue.sport === item.name || venue.sport === 'Both').length} venues</small></b></button>)}</div></section>
               <section className="venue-quick-links"><h2>Quick links</h2><a href="/events"><span><Icon name="calendar" size={14} /></span>Explore events <i>→</i></a><a href="/favorite-venues"><span><Icon name="heart" size={14} /></span>Favorite venues <i>→</i></a><a href="/players"><span><Icon name="player" size={14} /></span>Find players <i>→</i></a><a href="/teams"><span><Icon name="teams" size={14} /></span>Find teams <i>→</i></a></section>
             </aside>
           </div>

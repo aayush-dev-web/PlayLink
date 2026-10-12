@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import Icon from './Icon.jsx'
+import ReportUserButton from './ReportUserButton.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { supabase } from '../auth/supabase.js'
 
@@ -175,11 +176,6 @@ export default function VenueInbox({ mode = 'player' }) {
         ? { ...item, messages: [...item.messages, newMessage], updated_at: newMessage.created_at }
         : item).sort((first, second) => new Date(second.updated_at || 0) - new Date(first.updated_at || 0)))
       setDraft('')
-      const textarea = document.getElementById(`venue-message-${mode}`)
-      if (textarea) {
-        textarea.style.height = ''
-        textarea.style.overflowY = 'hidden'
-      }
     } catch (sendError) {
       setError(inboxErrorMessage(sendError))
     } finally {
@@ -197,12 +193,7 @@ export default function VenueInbox({ mode = 'player' }) {
   const otherPartyName = mode === 'owner' ? selectedConversation?.player_name || 'Player' : selectedConversation?.venue?.name || 'Venue owner'
 
   function changeDraft(event) {
-    const textarea = event.currentTarget
-    setDraft(textarea.value)
-    textarea.style.height = 'auto'
-    const height = Math.min(textarea.scrollHeight, 120)
-    textarea.style.height = `${Math.max(39, height)}px`
-    textarea.style.overflowY = textarea.scrollHeight > 120 ? 'auto' : 'hidden'
+    setDraft(event.currentTarget.value)
   }
 
   function insertEmoji(emoji) {
@@ -216,9 +207,6 @@ export default function VenueInbox({ mode = 'player' }) {
       textarea.focus()
       const cursor = start + emoji.length
       textarea.setSelectionRange(cursor, cursor)
-      textarea.style.height = 'auto'
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`
-      textarea.style.overflowY = textarea.scrollHeight > 120 ? 'auto' : 'hidden'
     })
   }
 
@@ -261,6 +249,7 @@ export default function VenueInbox({ mode = 'player' }) {
         </aside>
         {selectedConversation ? <section className="venue-inbox-chat">
           <header><span className="venue-inbox-avatar">{nameInitials(otherPartyName)}</span><span><b>{otherPartyName}</b><small>{mode === 'owner' ? `${selectedConversation.venue?.name || 'Your venue'} · ${selectedConversation.venue?.area || ''}` : 'Venue owner conversation'}</small></span></header>
+          <div className="venue-inbox-report"><ReportUserButton targetUserId={mode === 'owner' ? selectedConversation.player_id : selectedConversation.venue?.owner_id} targetName={mode === 'owner' ? otherPartyName : 'venue owner'} /></div>
           <div className="venue-inbox-messages">
             {activeMessages.length ? activeMessages.map((message) => {
               const messageReactions = message.reactions || []
@@ -305,7 +294,7 @@ export default function VenueInbox({ mode = 'player' }) {
           <form className="venue-inbox-compose" onSubmit={sendMessage}>
             <label className="visually-hidden" htmlFor={`venue-message-${mode}`}>Write a message</label>
             <div className="venue-inbox-compose-field">
-              <textarea id={`venue-message-${mode}`} rows="1" maxLength="2000" placeholder="Write a message…" value={draft} onChange={changeDraft} required />
+              <textarea id={`venue-message-${mode}`} rows="2" maxLength="2000" placeholder="Write a message…" value={draft} onChange={changeDraft} required />
               <div className="venue-inbox-emoji-wrap">
                 <button type="button" className="venue-inbox-emoji-toggle" aria-label="Add emoji" aria-expanded={emojiPickerOpen} onClick={() => setEmojiPickerOpen((open) => !open)}>☺</button>
                 {emojiPickerOpen && <div className="venue-inbox-emoji-picker" aria-label="Choose an emoji">{reactionEmojis.map((emoji) => <button type="button" key={emoji} aria-label={`Insert ${emoji}`} onClick={() => { insertEmoji(emoji); setEmojiPickerOpen(false) }}>{emoji}</button>)}</div>}

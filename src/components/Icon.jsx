@@ -15,7 +15,7 @@ const iconContent = {
   search: <><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 5 5" /></>,
   message: <><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 8.7 3.9a8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z" /><path d="M8 11h8m-8 3h5" /></>,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 12a2 2 0 0 0 4 0" /></>,
-  settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a8 8 0 0 1-1.6.9l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.6-.9l-1.7.6-1.4-2.4 1.4-1.1a8 8 0 0 1 0-1.9l-1.4-1.2 1.4-2.4 1.7.7a8 8 0 0 1 1.6-.9l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.6.9l1.7-.7 1.4 2.4-1.4 1.2a8 8 0 0 1 0 1.8Z" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.8 3.1-.2-.1a1.7 1.7 0 0 0-1.9.3l-.1.1h-3.6l-.1-.2a1.7 1.7 0 0 0-1.6-1.1 1.7 1.7 0 0 0-.9.3l-.2.1-3.1-1.8.1-.2a1.7 1.7 0 0 0-.3-1.9l-.1-.1v-3.6l.2-.1a1.7 1.7 0 0 0 .8-1.5 1.7 1.7 0 0 0-.3-1l-.1-.2 1.8-3.1.2.1a1.7 1.7 0 0 0 1.9-.3l.1-.1h3.6l.1.2a1.7 1.7 0 0 0 1.6 1.1 1.7 1.7 0 0 0 .9-.3l.2-.1 3.1 1.8-.1.2a1.7 1.7 0 0 0 .3 1.9l.1.1v3.6l-.2.1a1.7 1.7 0 0 0-.8 1.5 1.7 1.7 0 0 0 .3 1Z" /></>,
   pin: <><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></>,
   walk: <><circle cx="14" cy="4" r="2" /><path d="m12 8-3 4 3 2 1 6m-4-8-3 5-3 1m9-6 4 3 3 1m-8-6 4 2" /></>,
   bike: <><circle cx="6" cy="17" r="3" /><circle cx="18" cy="17" r="3" /><path d="m6 17 4-7h4l4 7m-8-7-2-3h4m0 3 2 4h-5" /></>,
@@ -49,8 +49,8 @@ const iconContent = {
 }
 
 export default function Icon({ name, size = 20, strokeWidth = 1.8, ...props }) {
-  if (name === 'cricket' || name === 'futsal') {
-    const iconClass = name === 'cricket' ? 'icon-cricket-mask' : 'icon-futsal-mask'
+  if (name === 'cricket' || name === 'futsal' || name === 'football') {
+    const iconClass = name === 'cricket' ? 'icon-cricket-mask' : name === 'football' ? 'icon-football-mask' : 'icon-futsal-mask'
     return <span aria-hidden="true" className={`${iconClass}${props.className ? ` ${props.className}` : ''}`} style={{ width: size, height: size }} />
   }
 
