@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import DashboardShell from '../components/DashboardShell.jsx'
 import Icon from '../components/Icon.jsx'
+import ProfilePhotoCropper from '../components/ProfilePhotoCropper.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { supabase } from '../auth/supabase.js'
 import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
@@ -59,6 +60,7 @@ export default function DashboardProfile() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [photoFile, setPhotoFile] = useState(null)
+  const [cropSourceFile, setCropSourceFile] = useState(null)
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('')
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false)
   const [error, setError] = useState('')
@@ -161,19 +163,16 @@ export default function DashboardProfile() {
     if (!file) return
     const sizeLimit = (isDemo ? 2 : 5) * 1024 * 1024
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setPhotoFile(null)
       setError('Choose a JPG, PNG, or WebP profile photo.')
       setSuccess('')
       return
     }
     if (file.size > sizeLimit) {
-      setPhotoFile(null)
       setError(`This image is larger than ${isDemo ? '2' : '5'} MB. Upload an image smaller than ${isDemo ? '2' : '5'} MB.`)
       setSuccess('')
       return
     }
-    setPhotoFile(file)
-    setPhotoLoadFailed(false)
+    setCropSourceFile(file)
     setError('')
     setSuccess('')
   }
@@ -364,6 +363,15 @@ export default function DashboardProfile() {
           <div className="profile-form-footer"><span><Icon name="lock" size={15} /> Your profile details are managed by you.</span><button className="button button-primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save profile'}</button></div>
         </form>}
       </section>
+      {cropSourceFile && <ProfilePhotoCropper
+        file={cropSourceFile}
+        onCancel={() => setCropSourceFile(null)}
+        onApply={(croppedFile) => {
+          setPhotoFile(croppedFile)
+          setPhotoLoadFailed(false)
+          setCropSourceFile(null)
+        }}
+      />}
     </DashboardShell>
   )
 }

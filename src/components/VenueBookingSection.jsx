@@ -20,7 +20,7 @@ function Stars({ rating }) {
 
 export default function VenueBookingSection({ venue }) {
   const { user } = useAuth()
-  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
+  const { venueSports: sportOptions, error: sportsError } = usePlayLinkSports()
   const [bookings, setBookings] = useState([])
   const [reviews, setReviews] = useState([])
   const [loading, setLoading] = useState(Boolean(user))

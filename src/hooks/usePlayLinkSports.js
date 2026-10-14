@@ -1,14 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../auth/supabase.js'
 
-const baseSports = [
-  { name: 'Futsal', slug: 'futsal' },
-  { name: 'Cricket', slug: 'cricket' },
+const baseGameSports = [
+  { name: 'Football', slug: 'football', is_game: true },
+  { name: 'Cricket', slug: 'cricket', is_game: true },
 ]
 
+const baseVenueSports = [
+  { name: 'Futsal', slug: 'futsal', is_game: false },
+  { name: 'Cricket', slug: 'cricket', is_game: true },
+]
+const supportedVenueSportSlugs = new Set(['cricket', 'futsal'])
+
 export default function usePlayLinkSports() {
-  const [sports, setSports] = useState(baseSports)
+  const [sports, setSports] = useState(baseGameSports)
+  const [venueSports, setVenueSports] = useState(baseVenueSports)
   const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -20,14 +28,15 @@ export default function usePlayLinkSports() {
       try {
         const { data, error: loadError } = await supabase
           .from('playlink_sports')
-          .select('name,slug')
+          .select('name,slug,is_game')
           .order('name')
         if (!active) return
         if (loadError) {
           setError(`Sports could not be loaded: ${loadError.message}`)
           return
         }
-        setSports(data || [])
+        setSports((data || []).filter((sport) => sport.is_game))
+        setVenueSports((data || []).filter((sport) => supportedVenueSportSlugs.has(sport.slug)))
         setError('')
       } catch (loadError) {
         if (active) setError(`Sports could not be loaded: ${loadError instanceof Error ? loadError.message : 'Unknown error'}`)
@@ -35,7 +44,8 @@ export default function usePlayLinkSports() {
     }
     loadSports()
     return () => { active = false }
-  }, [])
+  }, [refreshKey])
 
-  return { sports, error }
+  const refresh = useCallback(() => setRefreshKey((current) => current + 1), [])
+  return { sports, venueSports, error, refresh }
 }

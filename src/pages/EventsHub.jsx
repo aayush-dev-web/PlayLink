@@ -28,7 +28,7 @@ function EventCard({ event, sports }) {
     <article className="dashboard-event-card event-live-card">
       <div className="dashboard-event-photo" style={{ backgroundImage: `linear-gradient(180deg,rgba(6,35,48,.04),rgba(6,35,48,.28)),url("/sports/${image}")` }}>
         <span className={`event-status-chip event-status-${event.status}`}>{eventStatusLabel(event.status)}</span>
-        <span className="event-card-sport"><Icon name={event.sport_type === 'cricket' ? 'cricket' : event.sport_type === 'futsal' ? 'futsal' : 'player'} size={13} />{sport?.name || event.sport_type}</span>
+        <span className="event-card-sport"><Icon name={event.sport_type === 'cricket' ? 'cricket' : event.sport_type === 'football' || event.sport_type === 'futsal' ? 'futsal' : 'player'} size={13} />{sport?.name || event.sport_type}</span>
       </div>
       <div className="dashboard-event-body">
         <div className="dashboard-event-date"><Icon name="calendar" size={13} />{formatEventDate(event.start_time)}</div>
@@ -78,7 +78,7 @@ export default function EventsHub() {
   const sports = [{ label: 'All events', value: '', icon: 'calendar' }, ...sportOptions.map((item) => ({
     label: item.name,
     value: item.slug,
-    icon: item.slug === 'cricket' ? 'cricket' : item.slug === 'futsal' ? 'futsal' : 'player',
+    icon: item.slug === 'cricket' ? 'cricket' : item.slug === 'football' || item.slug === 'futsal' ? 'futsal' : 'player',
   }))]
   const [search, setSearch] = useState(new URLSearchParams(window.location.search).get('q') || '')
   const [sport, setSport] = useState('')

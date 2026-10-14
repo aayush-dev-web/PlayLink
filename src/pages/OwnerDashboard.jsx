@@ -513,7 +513,7 @@ function BookingList({ bookings, venues, compact = false, onStatus }) {
 }
 
 function BookingForm({ venues, onCancel, onSave }) {
-  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
+  const { venueSports: sportOptions, error: sportsError } = usePlayLinkSports()
   const [form, setForm] = useState({ venue_id: venues[0]?.id || '', sport: venues[0]?.sport === 'Both' ? 'Futsal' : venues[0]?.sport || 'Futsal', customer_name: '', customer_contact: '', date: todayInputValue(), start_time: '09:00', end_time: '10:00', status: 'confirmed', notes: '' })
   function change(key) { return (event) => setForm((current) => ({ ...current, [key]: event.target.value })) }
   function changeVenue(event) {
@@ -532,7 +532,7 @@ function ScheduleForm({ venues, weekday, onCancel, onSave }) {
 }
 
 function VenuePage({ venues, onSave, onToggleActive }) {
-  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
+  const { venueSports: sportOptions, error: sportsError } = usePlayLinkSports()
   const location = useLocation()
   const [selectedId, setSelectedId] = useState(venues[0]?.id || '')
   const [form, setForm] = useState(null)

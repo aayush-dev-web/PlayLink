@@ -9,7 +9,7 @@ const defaultPreferences = {
   eventActivity: true,
   teamInvites: true,
   productUpdates: false,
-  preferredSports: ['Futsal', 'Cricket'],
+  preferredSports: ['Football', 'Cricket'],
   distanceUnit: 'km',
 }
 
@@ -37,7 +37,9 @@ export default function Settings() {
         setPreferences({
           ...defaultPreferences,
           ...parsed,
-          preferredSports: Array.isArray(parsed.preferredSports) ? parsed.preferredSports : defaultPreferences.preferredSports,
+          preferredSports: Array.isArray(parsed.preferredSports)
+            ? [...new Set(parsed.preferredSports.map((sport) => sport === 'Futsal' ? 'Football' : sport).filter((sport) => ['Football', 'Cricket'].includes(sport)))]
+            : defaultPreferences.preferredSports,
         })
       } else {
         setPreferences(defaultPreferences)
@@ -115,7 +117,7 @@ export default function Settings() {
             <section className="settings-card">
               <div className="settings-card-heading"><span><Icon name="compass" size={19} /></span><div><h2>Discovery</h2><p>Choose the sports and units used in your local preview.</p></div></div>
               <fieldset className="settings-sport-options"><legend>Preferred sports</legend>
-                {sportOptions.map((sport) => <label key={sport.slug}><input type="checkbox" checked={preferences.preferredSports.includes(sport.name)} onChange={() => toggleSport(sport.name)} /><Icon name={sport.slug === 'cricket' ? 'cricket' : sport.slug === 'futsal' ? 'futsal' : 'player'} size={16} />{sport.name}</label>)}
+                {sportOptions.map((sport) => <label key={sport.slug}><input type="checkbox" checked={preferences.preferredSports.includes(sport.name)} onChange={() => toggleSport(sport.name)} /><Icon name={sport.slug === 'cricket' ? 'cricket' : sport.slug === 'football' ? 'futsal' : 'player'} size={16} />{sport.name}</label>)}
               </fieldset>
               {sportsError && <p className="settings-feedback" role="alert">{sportsError}</p>}
               <label className="settings-unit-select"><span>Distance unit</span><select value={preferences.distanceUnit} onChange={(event) => updatePreference('distanceUnit', event.target.value)}><option value="km">Kilometers (km)</option><option value="mi">Miles (mi)</option></select></label>

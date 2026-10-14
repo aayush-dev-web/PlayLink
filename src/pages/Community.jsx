@@ -51,7 +51,7 @@ function initials(value = '') {
 
 function sportIcon(sport = '') {
   const normalized = sport.toLowerCase()
-  return normalized === 'cricket' ? 'cricket' : normalized === 'futsal' ? 'futsal' : 'player'
+  return normalized === 'cricket' ? 'cricket' : normalized === 'football' || normalized === 'futsal' ? 'futsal' : 'player'
 }
 
 function openSpotsFor(team) {
@@ -656,7 +656,7 @@ export default function Community({ mode: initialMode = 'teams' }) {
           <aside className={`community-aside${isTeams ? ' teams-community-aside' : ' players-community-aside'}`}>
             {isTeams ? <section className="community-create-panel"><span className="community-create-icon"><Icon name="teams" size={21} /></span><h2>Create Your Team</h2><p>Any player can create a team, invite teammates, and control whether it is listed publicly.</p>{user ? <button type="button" className="button button-primary" onClick={openListingForm}><Icon name="add" size={15} /> Create Team</button> : <Link className="button button-primary" to="/sign-in?next=%2Fteams">Sign in to create</Link>}</section>
               : <section className="player-profile-cta"><span><Icon name="player" size={21} /></span><div><h2>Looking for teammates?</h2><p>All player accounts are listed automatically. Add a player listing to share your sport, availability, and more.</p>{user ? <button type="button" onClick={openListingForm}>Complete player listing <Icon name="arrow-right" size={13} /></button> : <Link to="/sign-in?next=%2Fplayers">Sign in to publish</Link>}</div></section>}
-            <section className="dashboard-side-card popular-community-sports"><div className="dashboard-aside-heading"><h2>Browse by sport</h2><button type="button" onClick={() => setSport('Any sport')}>View all</button></div>{sportOptions.map((item) => <button key={item.slug} type="button" onClick={() => setSport(sport === item.name ? 'Any sport' : item.name)}><span className={`popular-sport-icon${item.slug === 'cricket' ? ' cricket-sport-icon' : ''}`}><Icon name={item.slug === 'cricket' ? 'cricket' : item.slug === 'futsal' ? 'futsal' : 'player'} size={18} /></span><b>{item.name}<small>{allListings.filter((listing) => listing.sport === item.name).length} listings</small></b><Icon name="chevron-right" size={14} /></button>)}</section>
+            <section className="dashboard-side-card popular-community-sports"><div className="dashboard-aside-heading"><h2>Browse by sport</h2><button type="button" onClick={() => setSport('Any sport')}>View all</button></div>{sportOptions.map((item) => <button key={item.slug} type="button" onClick={() => setSport(sport === item.name ? 'Any sport' : item.name)}><span className={`popular-sport-icon${item.slug === 'cricket' ? ' cricket-sport-icon' : ''}`}><Icon name={item.slug === 'cricket' ? 'cricket' : item.slug === 'football' ? 'futsal' : 'player'} size={18} /></span><b>{item.name}<small>{allListings.filter((listing) => listing.sport === item.name).length} listings</small></b><Icon name="chevron-right" size={14} /></button>)}</section>
           </aside>
         </div>
       </div>

@@ -62,7 +62,7 @@ function VenueCard({ venue, onSelect, onDetails, selected, favorite, favoritePen
 
 export default function Venues() {
   const { pendingIds, error: favoriteError, isFavorite, toggleFavorite } = useVenueFavorites()
-  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
+  const { venueSports: sportOptions, error: sportsError } = usePlayLinkSports()
   const params = new URLSearchParams(window.location.search)
   const [location, setLocation] = useState(params.get('location') || '')
   const [globalSearch, setGlobalSearch] = useState('')
@@ -139,13 +139,15 @@ export default function Venues() {
     )
   }
 
+  const supportedVenueSports = useMemo(() => new Set(sportOptions.map((item) => item.name)), [sportOptions])
   const filtered = useMemo(() => ownerVenues.filter((venue) => {
+    if (!supportedVenueSports.has(venue.sport)) return false
     const query = `${location} ${globalSearch}`.trim().toLowerCase()
     const matchesLocation = !query || `${venue.area} ${venue.name}`.toLowerCase().includes(query)
-    const matchesSport = sport === 'Any sport' || venue.sport === sport || venue.sport === 'Both'
+    const matchesSport = sport === 'Any sport' || venue.sport === sport
     const matchesPrice = price === 'Any price' || (price === 'Under NPR 2,500' ? Number(venue.price.replace(/\D/g, '')) < 2500 : Number(venue.price.replace(/\D/g, '')) >= 2500)
     return matchesLocation && matchesSport && matchesPrice
-  }).sort((first, second) => sort === 'Price: low to high' ? Number(first.price.replace(/\D/g, '')) - Number(second.price.replace(/\D/g, '')) : sort === 'Top rated' ? second.rating - first.rating : 0), [location, globalSearch, ownerVenues, sport, price, sort])
+  }).sort((first, second) => sort === 'Price: low to high' ? Number(first.price.replace(/\D/g, '')) - Number(second.price.replace(/\D/g, '')) : sort === 'Top rated' ? second.rating - first.rating : 0), [location, globalSearch, ownerVenues, supportedVenueSports, sport, price, sort])
 
   const resetFilters = () => {
     setLocation('')
@@ -161,10 +163,10 @@ export default function Venues() {
           <section className="venue-welcome">
             <div className="venue-welcome-copy"><span className="eyebrow">YOUR NEXT GAME IS CLOSER THAN YOU THINK</span><h1>Find Your Perfect Venue</h1><p>Discover local sports venues, compare your options, and find a place for your next game.</p>
               <div className="sport-switch" aria-label="Filter venues by sport">
-                {sportOptions.map((item) => <button key={item.slug} type="button" className={sport === item.name ? 'sport-switch-button active' : 'sport-switch-button'} aria-pressed={sport === item.name} onClick={() => setSport(sport === item.name ? 'Any sport' : item.name)}><Icon name={item.slug === 'cricket' ? 'cricket' : item.slug === 'futsal' ? 'futsal' : 'player'} size={15} /> {item.name}</button>)}
+                {sportOptions.map((item) => <button key={item.slug} type="button" className={sport === item.name ? 'sport-switch-button active' : 'sport-switch-button'} aria-pressed={sport === item.name} onClick={() => setSport(sport === item.name ? 'Any sport' : item.name)}><Icon name={item.slug === 'cricket' ? 'cricket' : item.slug === 'football' || item.slug === 'futsal' ? 'futsal' : 'player'} size={15} /> {item.name}</button>)}
+                <Link className="venue-nearby-link" to="/nearby"><Icon name="compass" size={15} />Find venues near you</Link>
               </div>
             </div>
-            <div className="welcome-court-art" aria-hidden="true" />
           </section>
 
           <section className="venue-filter-panel" aria-label="Venue filters">
@@ -187,9 +189,14 @@ export default function Venues() {
             </section>
 
             <aside className="venue-dashboard-aside">
+              <section className="venue-nearby-card">
+                <span><Icon name="compass" size={17} /></span>
+                <div><b>Find venues near you</b><small>Use your location to sort nearby places and view directions here.</small></div>
+                <Link to="/nearby"><Icon name="arrow-right" size={13} /> Explore</Link>
+              </section>
               <VenueMap venues={filtered} selectedVenue={selected} onSelect={showVenue} userCoordinates={userCoordinates} onFindLocation={findUserLocation} locationMessage={locationMessage} />
-              <section className="venue-callout"><span className="callout-icon"><Icon name="futsal" size={19} /></span><div><b>Own a sports venue?</b><p>List your facility for local players.</p><Link to="/get-started">Create an owner account <span>→</span></Link></div></section>
-              <section className="popular-sports"><h2>Venues by sport</h2><div>{sportOptions.map((item) => <button key={item.slug} type="button" onClick={() => setSport(sport === item.name ? 'Any sport' : item.name)}><span><Icon name={item.slug === 'cricket' ? 'cricket' : item.slug === 'futsal' ? 'futsal' : 'player'} size={18} /></span><b>{item.name}<small>{ownerVenues.filter((venue) => venue.sport === item.name || venue.sport === 'Both').length} venues</small></b></button>)}</div></section>
+              <section className="venue-callout"><span className="callout-icon"><Icon name="futsal" size={19} /></span><div><b>Own a sports venue?</b><p>List your facility for local players.</p><Link to="/owner-preview">Preview the owner dashboard <span>→</span></Link><Link to="/get-started">Create an owner account <span>→</span></Link></div></section>
+              <section className="popular-sports"><h2>Venues by sport</h2><div>{sportOptions.map((item) => <button key={item.slug} type="button" onClick={() => setSport(sport === item.name ? 'Any sport' : item.name)}><span><Icon name={item.slug === 'cricket' ? 'cricket' : item.slug === 'football' || item.slug === 'futsal' ? 'futsal' : 'player'} size={18} /></span><b>{item.name}<small>{ownerVenues.filter((venue) => venue.sport === item.name || venue.sport === 'Both').length} venues</small></b></button>)}</div></section>
               <section className="venue-quick-links"><h2>Quick links</h2><a href="/events"><span><Icon name="calendar" size={14} /></span>Explore events <i>→</i></a><a href="/favorite-venues"><span><Icon name="heart" size={14} /></span>Favorite venues <i>→</i></a><a href="/players"><span><Icon name="player" size={14} /></span>Find players <i>→</i></a><a href="/teams"><span><Icon name="teams" size={14} /></span>Find teams <i>→</i></a></section>
             </aside>
           </div>

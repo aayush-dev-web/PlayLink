@@ -5,7 +5,7 @@ const sections = [
   {
     title: '1. Eligibility and your account',
     paragraphs: [
-      'You must be at least 18 years old to create a PlayLink account. By registering, you confirm that the information you provide is accurate and that you are legally able to agree to these Terms.',
+      'By registering, you confirm that the information you provide is accurate and that you are legally able to agree to these Terms.',
       'Keep your sign-in details confidential. You are responsible for activity through your account and must tell PlayLink promptly if you believe someone else has accessed it. Do not create an account for another person without their permission.',
     ],
   },

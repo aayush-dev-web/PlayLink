@@ -69,7 +69,7 @@ export const events = [
   {
     id: 1,
     title: 'Friday Night Five-a-side',
-    sport: 'Futsal',
+    sport: 'Football',
     date: 'Fri, Oct 16',
     time: '6:30 PM',
     location: 'The Matchday Arena · Thamel',
@@ -93,7 +93,7 @@ export const events = [
   {
     id: 3,
     title: 'Community Cup Qualifier',
-    sport: 'Futsal',
+    sport: 'Football',
     date: 'Sun, Oct 18',
     time: '2:00 PM',
     location: 'Northside Futsal · Lazimpat',
@@ -105,7 +105,7 @@ export const events = [
   {
     id: 4,
     title: 'Saturday Morning Kickabout',
-    sport: 'Futsal',
+    sport: 'Football',
     date: 'Sat, Oct 24',
     time: '9:00 AM',
     location: 'Greenfield Sports Hub · Bhaktapur',
@@ -129,25 +129,25 @@ export const events = [
 ]
 
 export const teams = [
-  { name: 'The Goal Squad', sport: 'Futsal', area: 'Lalitpur', level: 'Intermediate', availability: 'Weeknights', need: '2 open positions', initials: 'GS', image: '/sports/fut1.png', members: 6, recruiting: true, description: 'Competitive but friendly futsal team looking for skilled players to strengthen the squad.' },
+  { name: 'The Goal Squad', sport: 'Football', area: 'Lalitpur', level: 'Intermediate', availability: 'Weeknights', need: '2 open positions', initials: 'GS', image: '/sports/fut1.png', members: 6, recruiting: true, description: 'Competitive but friendly futsal team looking for skilled players to strengthen the squad.' },
   { name: 'Himalayan Strikers', sport: 'Cricket', area: 'Kathmandu', level: 'Intermediate', availability: 'Weekends', need: '3 open positions', initials: 'HS', image: '/sports/fut2.png', members: 8, recruiting: true, description: 'We play friendly and competitive cricket. Looking for passionate players of all skill levels.' },
-  { name: 'Everest FC', sport: 'Futsal', area: 'Bhaktapur', level: 'Advanced', availability: 'Weeknights', need: '2 open positions', initials: 'EF', image: '/sports/fut3.png', members: 10, recruiting: true, description: 'Futsal team focused on growth, teamwork and having fun. Join us!' },
+  { name: 'Everest FC', sport: 'Football', area: 'Bhaktapur', level: 'Advanced', availability: 'Weeknights', need: '2 open positions', initials: 'EF', image: '/sports/fut3.png', members: 10, recruiting: true, description: 'Futsal team focused on growth, teamwork and having fun. Join us!' },
   { name: 'Kirtipur Royals', sport: 'Cricket', area: 'Kirtipur', level: 'Advanced', availability: 'Weekends', need: 'No open positions', initials: 'KR', image: '/sports/fut2.png', members: 12, recruiting: false, description: 'Established cricket team. Currently full, but open for future members.' },
-  { name: 'Summit Ballers', sport: 'Futsal', area: 'Bhaisepati', level: 'Beginner friendly', availability: 'Weekends', need: '2 open positions', initials: 'SB', image: '/sports/fut5.png', members: 5, recruiting: true, description: 'Looking for one or two more players for our weekend futsal matches.' },
+  { name: 'Summit Ballers', sport: 'Football', area: 'Bhaisepati', level: 'Beginner friendly', availability: 'Weekends', need: '2 open positions', initials: 'SB', image: '/sports/fut5.png', members: 5, recruiting: true, description: 'Looking for one or two more players for our weekend futsal matches.' },
   { name: 'Lakeside XI', sport: 'Cricket', area: 'Pokhara', level: 'Intermediate', availability: 'Weekends', need: 'No open positions', initials: 'LX', image: '/sports/fut2.png', members: 9, recruiting: false, description: 'Friendly cricket team. We play regularly and welcome new members.' },
 ]
 
 export const players = [
-  { name: 'Aarav Shrestha', sport: 'Futsal', sports: ['Futsal', 'Cricket'], area: 'Thamel', distance: '4.2 km', level: 'Intermediate', availability: 'Weeknights', days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], role: 'Goalkeeper', initials: 'AS', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'Love playing futsal and cricket. Looking for a good team to join and improve together.' },
-  { name: 'Sanjana Rana', sport: 'Cricket', sports: ['Cricket', 'Futsal'], area: 'Kirtipur', distance: '6.8 km', level: 'Beginner', availability: 'Weekends', days: ['Mon', 'Tue', 'Sat', 'Sun'], role: 'All-rounder', initials: 'SR', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'New to cricket but always eager to learn and play. Looking for a friendly team.' },
-  { name: 'Rohit Gurung', sport: 'Cricket', sports: ['Cricket', 'Futsal'], area: 'Lalitpur', distance: '3.5 km', level: 'Advanced', availability: 'Weekends', days: ['Tue', 'Wed', 'Thu', 'Fri'], role: 'All-rounder', initials: 'RG', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'All-rounder in cricket. Can also play futsal. Open to joining a competitive team.' },
-  { name: 'Priya Karki', sport: 'Futsal', sports: ['Futsal', 'Cricket'], area: 'Thamel', distance: '5.1 km', level: 'Intermediate', availability: 'Weeknights', days: ['Mon', 'Tue', 'Thu', 'Fri'], role: 'Forward', initials: 'PK', online: false, lastSeen: '1h ago', lookingForTeam: true, description: 'Enjoy playing futsal and casual cricket. Looking for a team to play with regularly.' },
-  { name: 'Siddhant Thapa', sport: 'Cricket', sports: ['Cricket', 'Futsal'], area: 'Bhaktapur', distance: '7.3 km', level: 'Beginner', availability: 'Weekends', days: ['Wed', 'Thu', 'Sat', 'Sun'], role: 'Batter', initials: 'ST', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'Just started playing cricket. Want to learn and be part of a team.' },
-  { name: 'Anushka Tamang', sport: 'Futsal', sports: ['Futsal', 'Cricket'], area: 'Kathmandu', distance: '2.7 km', level: 'Intermediate', availability: 'Weekends', days: ['Mon', 'Wed', 'Fri', 'Sat'], role: 'Midfielder', initials: 'AT', online: false, lastSeen: '3h ago', lookingForTeam: true, description: 'Versatile player. Enjoy both futsal and cricket. Looking for a team near my area.' },
+  { name: 'Aarav Shrestha', sport: 'Football', sports: ['Football', 'Cricket'], area: 'Thamel', distance: '4.2 km', level: 'Intermediate', availability: 'Weeknights', days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], role: 'Goalkeeper', initials: 'AS', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'Love playing futsal and cricket. Looking for a good team to join and improve together.' },
+  { name: 'Sanjana Rana', sport: 'Cricket', sports: ['Cricket', 'Football'], area: 'Kirtipur', distance: '6.8 km', level: 'Beginner', availability: 'Weekends', days: ['Mon', 'Tue', 'Sat', 'Sun'], role: 'All-rounder', initials: 'SR', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'New to cricket but always eager to learn and play. Looking for a friendly team.' },
+  { name: 'Rohit Gurung', sport: 'Cricket', sports: ['Cricket', 'Football'], area: 'Lalitpur', distance: '3.5 km', level: 'Advanced', availability: 'Weekends', days: ['Tue', 'Wed', 'Thu', 'Fri'], role: 'All-rounder', initials: 'RG', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'All-rounder in cricket. Can also play futsal. Open to joining a competitive team.' },
+  { name: 'Priya Karki', sport: 'Football', sports: ['Football', 'Cricket'], area: 'Thamel', distance: '5.1 km', level: 'Intermediate', availability: 'Weeknights', days: ['Mon', 'Tue', 'Thu', 'Fri'], role: 'Forward', initials: 'PK', online: false, lastSeen: '1h ago', lookingForTeam: true, description: 'Enjoy playing futsal and casual cricket. Looking for a team to play with regularly.' },
+  { name: 'Siddhant Thapa', sport: 'Cricket', sports: ['Cricket', 'Football'], area: 'Bhaktapur', distance: '7.3 km', level: 'Beginner', availability: 'Weekends', days: ['Wed', 'Thu', 'Sat', 'Sun'], role: 'Batter', initials: 'ST', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'Just started playing cricket. Want to learn and be part of a team.' },
+  { name: 'Anushka Tamang', sport: 'Football', sports: ['Football', 'Cricket'], area: 'Kathmandu', distance: '2.7 km', level: 'Intermediate', availability: 'Weekends', days: ['Mon', 'Wed', 'Fri', 'Sat'], role: 'Midfielder', initials: 'AT', online: false, lastSeen: '3h ago', lookingForTeam: true, description: 'Versatile player. Enjoy both futsal and cricket. Looking for a team near my area.' },
   { name: 'Nabin Shrestha', sport: 'Cricket', sports: ['Cricket'], area: 'Lalitpur', distance: '4.8 km', level: 'Advanced', availability: 'Weekends', days: ['Tue', 'Thu', 'Fri', 'Sat'], role: 'Batter', initials: 'NS', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'Top-order batsman. Looking for a club or team for regular matches.' },
-  { name: 'Diya Sharma', sport: 'Futsal', sports: ['Futsal', 'Cricket'], area: 'Thamel', distance: '6.9 km', level: 'Intermediate', availability: 'Weeknights', days: ['Mon', 'Wed', 'Thu', 'Sun'], role: 'Midfielder', initials: 'DS', online: false, lastSeen: '2h ago', lookingForTeam: true, description: 'Passionate about sports and teamwork. Open to new opportunities.' },
-  { name: 'Prabin Oli', sport: 'Cricket', sports: ['Cricket', 'Futsal'], area: 'Kirtipur', distance: '8.2 km', level: 'Beginner', availability: 'Weekends', days: ['Mon', 'Tue', 'Fri', 'Sun'], role: 'Bowler', initials: 'PO', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'Still learning but very enthusiastic. Looking for a team to play with.' },
-  { name: 'Mira Shrestha', sport: 'Futsal', sports: ['Futsal'], area: 'Patan', distance: '3.9 km', level: 'Advanced', availability: 'Weeknights', days: ['Mon', 'Tue', 'Thu', 'Fri'], role: 'Defender', initials: 'MS', online: false, lastSeen: '5h ago', lookingForTeam: false, description: 'Experienced defender who enjoys competitive games and helping new players.' },
+  { name: 'Diya Sharma', sport: 'Football', sports: ['Football', 'Cricket'], area: 'Thamel', distance: '6.9 km', level: 'Intermediate', availability: 'Weeknights', days: ['Mon', 'Wed', 'Thu', 'Sun'], role: 'Midfielder', initials: 'DS', online: false, lastSeen: '2h ago', lookingForTeam: true, description: 'Passionate about sports and teamwork. Open to new opportunities.' },
+  { name: 'Prabin Oli', sport: 'Cricket', sports: ['Cricket', 'Football'], area: 'Kirtipur', distance: '8.2 km', level: 'Beginner', availability: 'Weekends', days: ['Mon', 'Tue', 'Fri', 'Sun'], role: 'Bowler', initials: 'PO', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'Still learning but very enthusiastic. Looking for a team to play with.' },
+  { name: 'Mira Shrestha', sport: 'Football', sports: ['Football'], area: 'Patan', distance: '3.9 km', level: 'Advanced', availability: 'Weeknights', days: ['Mon', 'Tue', 'Thu', 'Fri'], role: 'Defender', initials: 'MS', online: false, lastSeen: '5h ago', lookingForTeam: false, description: 'Experienced defender who enjoys competitive games and helping new players.' },
   { name: 'Kiran Maharjan', sport: 'Cricket', sports: ['Cricket'], area: 'Kirtipur', distance: '5.4 km', level: 'Intermediate', availability: 'Weekends', days: ['Wed', 'Thu', 'Sat', 'Sun'], role: 'Wicketkeeper', initials: 'KM', online: true, lastSeen: 'just now', lookingForTeam: true, description: 'Wicketkeeper looking for a relaxed local side and regular weekend fixtures.' },
-  { name: 'Sita Rai', sport: 'Futsal', sports: ['Futsal', 'Cricket'], area: 'Baneshwor', distance: '4.6 km', level: 'Beginner', availability: 'Weekends', days: ['Mon', 'Tue', 'Wed', 'Sun'], role: 'Midfielder', initials: 'SR', online: false, lastSeen: '1d ago', lookingForTeam: true, description: 'Friendly beginner looking for a supportive team and more time on the pitch.' },
+  { name: 'Sita Rai', sport: 'Football', sports: ['Football', 'Cricket'], area: 'Baneshwor', distance: '4.6 km', level: 'Beginner', availability: 'Weekends', days: ['Mon', 'Tue', 'Wed', 'Sun'], role: 'Midfielder', initials: 'SR', online: false, lastSeen: '1d ago', lookingForTeam: true, description: 'Friendly beginner looking for a supportive team and more time on the pitch.' },
 ]

@@ -1,6 +1,14 @@
 [auth.email]
 otp_expiry = 300
 
+[auth.email.template.confirmation]
+subject = "Your PlayLink verification code"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.magic_link]
+subject = "Your PlayLink sign-in code"
+content_path = "./supabase/templates/magic_link.html"
+
 [functions.send-auth-fallback-link]
 verify_jwt = false
 

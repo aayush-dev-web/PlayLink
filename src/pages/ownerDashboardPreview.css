@@ -1,0 +1,159 @@
+.owner-demo-nav-item {
+  min-height: 39px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 12px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #d8e4ee;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.owner-demo-nav-item.active {
+  border-left-color: #20b45a;
+  color: #fff;
+  background: rgba(12,150,92,.3);
+}
+
+.owner-demo-nav-item > img {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
+.owner-demo-sidebar-note {
+  margin: auto 9px 2px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(255,255,255,.12);
+  color: #91adbf;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  line-height: 1.8;
+}
+
+.owner-demo-sidebar-note small {
+  color: #c0d0dc;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.owner-demo-toplink,
+.owner-demo-banner > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #21804c;
+  font-size: 8px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.owner-demo-back-icon { transform: rotate(180deg); }
+
+.owner-demo-signup { min-height: 30px; }
+
+.owner-demo-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 13px;
+  padding: 9px 11px;
+  border: 1px solid #cfe5f5;
+  border-radius: 8px;
+  background: #f2f9fe;
+}
+
+.owner-demo-banner > span {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: #2477ad;
+  background: #e1f1fb;
+}
+
+.owner-demo-banner > div {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.owner-demo-banner b { color: #244c68; font-size: 9px; }
+.owner-demo-banner small { color: #617f96; font-size: 8px; line-height: 1.4; }
+.owner-demo-panel-label { color: #738a9d; font-size: 6px; font-weight: 800; letter-spacing: .8px; white-space: nowrap; }
+
+.owner-demo-booking {
+  grid-template-columns: minmax(110px,.9fr) minmax(100px,1fr) auto;
+}
+
+.owner-demo-booking .owner-booking-meta { display: none; }
+
+.owner-demo-action {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  border-top: 1px solid #edf1f4;
+  color: #19824b;
+}
+
+.owner-demo-action > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.owner-demo-action b { color: #2b4b64; font-size: 8px; }
+.owner-demo-action small { color: #8091a0; font-size: 7px; }
+
+.owner-app .owner-panel.owner-demo-join {
+  min-height: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border-color: #d4e9dc;
+  background: linear-gradient(135deg,#f3fbf5,#fff);
+}
+
+.owner-demo-join > span {
+  width: 31px;
+  height: 31px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  color: #16814a;
+  background: #e4f7eb;
+}
+
+.owner-demo-join > div { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.owner-demo-join b { color: #24445d; font-size: 8px; }
+.owner-demo-join small { color: #768a9a; font-size: 7px; line-height: 1.4; }
+.owner-demo-join a { display: inline-flex; align-items: center; gap: 4px; margin-top: 3px; color: #16814a; font-size: 7px; font-weight: 700; }
+
+@media (max-width: 760px) {
+  .owner-demo-app { display: block; }
+  .owner-demo-app .owner-sidebar { display: none; }
+  .owner-demo-app .owner-topbar { min-height: 48px; gap: 8px; padding-inline: 11px; }
+  .owner-demo-app .owner-content { padding: 10px; }
+  .owner-demo-app .owner-overview-grid { grid-template-columns: 1fr; }
+  .owner-demo-app .owner-demo-banner { align-items: flex-start; flex-wrap: wrap; }
+  .owner-demo-app .owner-demo-banner > div { flex-basis: calc(100% - 42px); }
+  .owner-demo-app .owner-demo-banner > a { margin-left: 38px; }
+  .owner-demo-app .owner-demo-toplink { margin-left: auto; }
+}
+
+@media (max-width: 480px) {
+  .owner-demo-app .owner-page-heading { align-items: flex-start; }
+  .owner-demo-app .owner-date-chip { display: none; }
+  .owner-demo-app .owner-demo-signup { min-height: 28px; padding: 0 7px; font-size: 7px; }
+  .owner-demo-app .owner-demo-toplink { font-size: 7px; }
+  .owner-demo-app .owner-metrics-grid { gap: 6px; }
+  .owner-demo-app .owner-demo-booking { grid-template-columns: minmax(85px,.8fr) minmax(80px,1fr) auto; gap: 5px; }
+}

@@ -54,7 +54,20 @@ const viewContent = {
   },
 }
 function ConfigurationMessage() {
-  return <div className="auth-config-message" role="status">Authentication is not configured yet. Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to your local <code>.env.local</code>, then restart Vite.</div>
+  return <div className="auth-config-message" role="status">Account services are temporarily unavailable. Please try again later.</div>
+}
+
+function getPublicAuthError(error, fallback) {
+  if (!(error instanceof Error)) return fallback
+
+  const message = error.message
+  if (/invalid login credentials/i.test(message)) return 'Email or password is incorrect.'
+  if (/email not confirmed/i.test(message)) return 'Please verify your email using the code we sent before logging in.'
+  if (/rate limit|too many requests/i.test(message)) return 'Too many attempts. Please wait a little and try again.'
+  if (/database|supabase|postgrest|postgres|migration|schema|rpc|relation|column|function|permission denied|duplicate key|violates|jwt|refresh token|edge function|server error|internal server|failed to fetch|network/i.test(message)) {
+    return fallback
+  }
+  return message
 }
 
 function coordinatePair(latitude, longitude) {
@@ -368,7 +381,7 @@ function PasswordField({ id, label, autoComplete, value, onChange, required = tr
 
 async function uploadInitialOwnerVenuePhoto(userId, file) {
   if (!file) return
-  if (!supabase) throw new Error('Venue photo upload needs a configured Supabase connection.')
+  if (!supabase) throw new Error('Account services are temporarily unavailable.')
   const { data: venue, error: venueError } = await supabase.from('owner_venues')
     .select('id')
     .eq('owner_id', userId)
@@ -376,7 +389,7 @@ async function uploadInitialOwnerVenuePhoto(userId, file) {
     .limit(1)
     .maybeSingle()
   if (venueError) throw venueError
-  if (!venue) throw new Error('Your venue profile could not be found. Confirm the venue owner signup migration has been applied.')
+  if (!venue) throw new Error('Your venue details could not be saved. Please try again.')
   const imageUrl = await uploadVenuePhoto(supabase, userId, venue.id, file)
   const { error: updateError } = await supabase.from('owner_venues')
     .update({ image_url: imageUrl })
@@ -388,7 +401,7 @@ async function uploadInitialOwnerVenuePhoto(userId, file) {
 export default function AuthPage({ mode = 'signup' }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
+  const { sports: sportOptions, venueSports: venueSportOptions, error: sportsError } = usePlayLinkSports()
   const { user } = useAuth()
   const requestedReturnTo = new URLSearchParams(location.search).get('next')
   const postLoginPath = requestedReturnTo?.startsWith('/') && !requestedReturnTo.startsWith('//')
@@ -396,7 +409,7 @@ export default function AuthPage({ mode = 'signup' }) {
     : isDesignatedAdmin(user) ? '/admin' : '/dashboard'
   const returnQuery = requestedReturnTo ? `?next=${encodeURIComponent(postLoginPath)}` : ''
   const view = viewContent[mode] || viewContent.signup
-  const [form, setForm] = useState({ fullName: '', username: '', email: '', phone: '', password: '', confirmPassword: '', otp: '', recoveryOtp: '', accountType: 'player', preferredSport: 'Futsal', homeLocation: '', homeLatitude: '', homeLongitude: '', acceptedTerms: false, ownerVenue: { name: '', sport: 'Futsal', area: '', address: '', price_per_hour: '', image_url: '', latitude: '', longitude: '', maps_url: '', description: '', is_active: true } })
+  const [form, setForm] = useState({ fullName: '', username: '', email: '', phone: '', password: '', confirmPassword: '', otp: '', recoveryOtp: '', accountType: 'player', preferredSport: 'Football', homeLocation: '', homeLatitude: '', homeLongitude: '', acceptedTerms: false, ownerVenue: { name: '', sport: 'Futsal', area: '', address: '', price_per_hour: '', image_url: '', latitude: '', longitude: '', maps_url: '', description: '', is_active: true } })
   const [busy, setBusy] = useState(false)
   const [otpSent, setOtpSent] = useState(false)
   const [recoveryOtpSent, setRecoveryOtpSent] = useState(false)
@@ -431,7 +444,7 @@ export default function AuthPage({ mode = 'signup' }) {
       ...current,
       email: user.email || '',
       fullName: user.user_metadata?.full_name || user.user_metadata?.name || '',
-      preferredSport: user.user_metadata?.preferred_sport || 'Futsal',
+      preferredSport: user.user_metadata?.preferred_sport === 'Futsal' ? 'Football' : user.user_metadata?.preferred_sport || 'Football',
     }))
   }, [mode, user, navigate])
 
@@ -556,7 +569,7 @@ export default function AuthPage({ mode = 'signup' }) {
     })
     if (suggestionsError) {
       if (['PGRST202', '42883'].includes(suggestionsError.code)) {
-        showMessage('That username is taken. Apply the latest profile migration to see available suggestions.')
+        showMessage('That username is taken. Please try a different username.')
       } else {
         throw suggestionsError
       }
@@ -570,14 +583,14 @@ export default function AuthPage({ mode = 'signup' }) {
     event.preventDefault()
     setMessage('')
     if (!supabase) {
-      showMessage('Connect a Supabase project in .env.local to enable authentication.')
+      showMessage('Account services are temporarily unavailable. Please try again later.')
       return
     }
 
     setBusy(true)
     try {
       if (mode === 'google-complete') {
-        if (!user) throw new Error('Sign in with Google before completing your PlayLink profile.')
+        if (!user) throw new Error('Sign in with Google before completing your profile.')
         if (!form.acceptedTerms) throw new Error('You must agree to the Terms and Conditions to continue.')
         const registrationLocation = requireRegistrationLocation(form)
         if (!/^[A-Za-z0-9_]{3,24}$/.test(form.username)) {
@@ -659,7 +672,7 @@ export default function AuthPage({ mode = 'signup' }) {
               password: form.password,
             })
             if (signInResult.error) {
-              throw new Error(`Supabase returned an incomplete verification response, and automatic sign-in failed: ${signInResult.error.message}. Request a new code. If this continues, check the Supabase Auth logs.`)
+              throw new Error('We could not finish verifying your email. Please request a new code and try again.')
             }
             data = signInResult.data
             error = null
@@ -752,7 +765,7 @@ export default function AuthPage({ mode = 'signup' }) {
           setOtpSent(true)
           setChallengeExpiresAt(Date.now() + challengeDurationSeconds * 1000)
           setResendCooldown(resendCooldownSeconds)
-          showMessage('Supabase accepted your signup request. Check your inbox and spam folder for a verification email. If it does not arrive, check Supabase Auth logs and your email provider delivery status.', 'success')
+          showMessage('We sent a 6-digit verification code to your email. Enter it below to finish creating your account.', 'success')
         }
       } else if (mode === 'login') {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -784,13 +797,13 @@ export default function AuthPage({ mode = 'signup' }) {
           }
           if (error?.name === 'AuthInvalidTokenResponseError') {
             setForm((current) => ({ ...current, recoveryOtp: '' }))
-            showMessage('Supabase did not return a password-reset session for this code. Request a new code. If this continues, check the hosted Supabase Auth logs and Reset password email template.')
+            showMessage('We could not verify that code. Request a new code and try again.')
             return
           }
           if (error) throw error
           if (!recoverySession || recoverySession.user.email?.toLowerCase() !== form.email.trim().toLowerCase()) {
             setForm((current) => ({ ...current, recoveryOtp: '' }))
-            showMessage('Supabase accepted the code but did not create a password-reset session for this email. Request a new code. If this keeps happening, check the Supabase Auth logs and recovery email template.')
+            showMessage('We could not verify that code. Request a new code and try again.')
             return
           }
           navigate('/reset-password', { replace: true })
@@ -817,11 +830,11 @@ export default function AuthPage({ mode = 'signup' }) {
     } catch (authError) {
       if (mode === 'login' && isDesignatedAdminEmail(form.email)
         && /invalid login credentials/i.test(authError instanceof Error ? authError.message : '')) {
-        showMessage('Supabase did not find an account with this password. If this is your first admin login, create the account and verify its email. If the account already exists, reset its password. Apply the admin access and profile inbox migrations to the connected Supabase project; verified admin accounts are then routed to /admin.')
+        showMessage('Email or password is incorrect. If you cannot access your account, reset your password.')
       } else if (((mode === 'signup' && otpSent) || (mode === 'forgot' && recoveryOtpSent)) && isInvalidOtpError(authError)) {
         showMessage('Code does not match. Check the code and try again.')
       } else {
-        showMessage(authError instanceof Error ? authError.message : 'Authentication failed. Please try again.')
+        showMessage(getPublicAuthError(authError, 'We could not complete your request. Please try again.'))
       }
     } finally {
       setBusy(false)
@@ -847,7 +860,7 @@ export default function AuthPage({ mode = 'signup' }) {
         ? 'If signup is still awaiting verification, a new verification code has been sent.'
         : 'If an account exists for this Gmail address, a new code has been sent. Check your inbox, spam, and Promotions.', 'success')
     } catch (authError) {
-      showMessage(authError instanceof Error ? authError.message : 'A new code could not be sent.')
+      showMessage(getPublicAuthError(authError, 'We could not send a new code. Please try again.'))
     } finally {
       setBusy(false)
     }
@@ -872,7 +885,7 @@ export default function AuthPage({ mode = 'signup' }) {
         ? 'If signup is still awaiting verification, a one-time sign-in link has been sent. Check your inbox and spam folder.'
         : 'If an account exists for that email, a password-reset link has been sent. Check your inbox and spam folder.', 'success')
     } catch (authError) {
-      showMessage(authError instanceof Error ? authError.message : 'A fallback email could not be sent.')
+      showMessage(getPublicAuthError(authError, 'We could not send the sign-in link. Please try again.'))
     } finally {
       setBusy(false)
     }
@@ -880,7 +893,7 @@ export default function AuthPage({ mode = 'signup' }) {
 
   async function signInWithGoogle() {
     if (!supabase) {
-      showMessage('Connect a Supabase project in .env.local to enable authentication.')
+      showMessage('Account services are temporarily unavailable. Please try again later.')
       return
     }
     setBusy(true)
@@ -891,7 +904,7 @@ export default function AuthPage({ mode = 'signup' }) {
       })
       if (error) throw error
     } catch (authError) {
-      showMessage(authError instanceof Error ? authError.message : 'Google sign-in could not be started.')
+      showMessage(getPublicAuthError(authError, 'Google sign-in could not be started. Please try again.'))
       setBusy(false)
     }
   }
@@ -947,7 +960,7 @@ export default function AuthPage({ mode = 'signup' }) {
                   <legend>Venue profile</legend>
                   <p>Enter your venue details to publish it after registration.</p>
                   <label htmlFor="auth-google-venue-name">Venue name</label><input id="auth-google-venue-name" value={form.ownerVenue.name} onChange={changeOwnerVenue('name')} required minLength="2" maxLength="120" placeholder="Your venue’s name" />
-                  <label htmlFor="auth-google-venue-sport">Sport</label><select className="auth-select" id="auth-google-venue-sport" value={form.ownerVenue.sport} onChange={changeOwnerVenue('sport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select>
+                  <label htmlFor="auth-google-venue-sport">Sport</label><select className="auth-select" id="auth-google-venue-sport" value={form.ownerVenue.sport} onChange={changeOwnerVenue('sport')}>{venueSportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select>
                   {sportsError && <p className="auth-message error" role="alert">{sportsError}</p>}
                   <label htmlFor="auth-google-venue-area">District / area</label><input id="auth-google-venue-area" value={form.ownerVenue.area} onChange={changeOwnerVenue('area')} required minLength="2" maxLength="160" placeholder="Kathmandu, Lalitpur, or Bhaktapur" />
                   <label htmlFor="auth-google-venue-address">Street address</label><input id="auth-google-venue-address" value={form.ownerVenue.address} onChange={changeOwnerVenue('address')} maxLength="240" placeholder="Full address" />
@@ -978,7 +991,7 @@ export default function AuthPage({ mode = 'signup' }) {
                   <p>Add the venue you want to list. You can update these details later in your owner dashboard.</p>
                   <label htmlFor="auth-venue-name">Venue name</label><input id="auth-venue-name" value={form.ownerVenue.name} onChange={changeOwnerVenue('name')} required minLength="2" maxLength="120" placeholder="Your venue’s registered name" />
                   <small className="auth-field-hint">Enter accurate venue details. Your listing can be edited after registration.</small>
-                  <label htmlFor="auth-venue-sport">Sport</label><select className="auth-select" id="auth-venue-sport" value={form.ownerVenue.sport} onChange={changeOwnerVenue('sport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select>
+                  <label htmlFor="auth-venue-sport">Sport</label><select className="auth-select" id="auth-venue-sport" value={form.ownerVenue.sport} onChange={changeOwnerVenue('sport')}>{venueSportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select>
                   {sportsError && <p className="auth-message error" role="alert">{sportsError}</p>}
                   <label htmlFor="auth-venue-area">District / area</label><input id="auth-venue-area" value={form.ownerVenue.area} onChange={changeOwnerVenue('area')} required minLength="2" maxLength="160" placeholder="Kathmandu, Lalitpur, Bhaktapur…" />
                   <label htmlFor="auth-venue-address">Street address</label><input id="auth-venue-address" value={form.ownerVenue.address} onChange={changeOwnerVenue('address')} maxLength="240" placeholder="Full address" />
@@ -1034,7 +1047,7 @@ export default function AuthPage({ mode = 'signup' }) {
             {mode === 'signup' && <p className="auth-switch-copy">Already have an account? <Link to={`/sign-in${returnQuery}`}>Log in</Link></p>}
             {mode === 'google-complete' && <p className="auth-switch-copy">Your Google account is connected. Your PlayLink profile will be saved when you complete this form.</p>}
             {mode === 'login' && <p className="auth-switch-copy">New to PlayLink? <Link to={`/get-started${returnQuery}`}>Create an account</Link></p>}
-            {mode === 'login' && isDesignatedAdminEmail(form.email) && <p className="auth-switch-copy">First admin setup? <Link to={`/get-started${returnQuery}`}>Create and verify this account</Link>, or <Link to="/forgot-password">reset its password</Link> if it already exists. After verifying the email, apply <code>20261003090000_admin_dashboard_access.sql</code> and <code>20261008170000_player_admin_profiles_and_inbox.sql</code> in the connected Supabase project.</p>}
+            {mode === 'login' && isDesignatedAdminEmail(form.email) && <p className="auth-switch-copy">First admin setup? <Link to={`/get-started${returnQuery}`}>Create and verify this account</Link>, or <Link to="/forgot-password">reset its password</Link> if it already exists.</p>}
             {mode === 'forgot' && <p className="auth-switch-copy"><Link to="/sign-in">Log in</Link></p>}
             {mode === 'reset' && <p className="auth-switch-copy"><Link to="/sign-in">Return to login</Link></p>}
           </div>

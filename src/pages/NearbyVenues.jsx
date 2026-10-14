@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import DashboardShell from '../components/DashboardShell.jsx'
 import Icon from '../components/Icon.jsx'
@@ -40,16 +41,31 @@ const suggestedVenues = venueDirectory.map((venue, index) => ({
 }))
 
 export default function NearbyVenues() {
-  const { sports: sportOptions, error: sportsError } = usePlayLinkSports()
+  const { venueSports: sportOptions, error: sportsError } = usePlayLinkSports()
   const [search, setSearch] = useState('')
   const [userLocation, setUserLocation] = useState(null)
   const [locationError, setLocationError] = useState('')
   const [locating, setLocating] = useState(false)
   const [sport, setSport] = useState('Any sport')
   const [selectedId, setSelectedId] = useState(null)
+  const [mapExpanded, setMapExpanded] = useState(false)
   const [venues, setVenues] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
+
+  useEffect(() => {
+    if (!mapExpanded) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setMapExpanded(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [mapExpanded])
 
   useEffect(() => {
     let active = true
@@ -88,16 +104,16 @@ export default function NearbyVenues() {
   }, [])
 
   const allVenues = useMemo(() => [
-    ...venues.map((venue) => ({
+    ...venues.filter((venue) => sportOptions.some((item) => item.name === venue.sport)).map((venue) => ({
       ...venue,
       isSuggested: false,
       mapsDestination: `${venue.name}, ${venue.address || venue.area}, Nepal`,
     })),
     ...suggestedVenues,
-  ], [venues])
+  ], [venues, sportOptions])
 
   const nearby = useMemo(() => allVenues
-    .filter((venue) => sport === 'Any sport' || venue.sport === sport || venue.sport === 'Both')
+    .filter((venue) => sport === 'Any sport' || venue.sport === sport)
     .filter((venue) => !search.trim() || `${venue.name} ${venue.area} ${venue.district || ''} ${venue.sport}`.toLowerCase().includes(search.trim().toLowerCase()))
     .map((venue) => ({
       ...venue,
@@ -133,6 +149,14 @@ export default function NearbyVenues() {
     )
   }
 
+  const mapPanel = (
+    <section className={`nearby-map-panel${mapExpanded ? ' is-expanded' : ''}`} role={mapExpanded ? 'dialog' : undefined} aria-modal={mapExpanded ? 'true' : undefined} aria-label={mapExpanded ? 'Expanded PlayLink venue map' : undefined}>
+      <div className="nearby-map-heading"><span><Icon name="map" size={19} /></span><div><b>PlayLink Map</b><small>{selectedVenue?.name || 'Venue area'}</small></div><button className="map-size-toggle" type="button" onClick={() => setMapExpanded((value) => !value)} aria-label={mapExpanded ? 'Restore map to previous size' : 'Expand map to fullscreen'} title={mapExpanded ? 'Restore map' : 'Expand map'}><Icon name={mapExpanded ? 'collapse' : 'expand'} size={16} /><span>{mapExpanded ? 'Restore size' : 'Expand map'}</span></button></div>
+      {selectedVenue ? <InlineDirectionsMap key={selectedVenue.id} className="nearby-inline-map" selectedVenue={selectedVenue} origin={userLocation} /> : <div className="nearby-empty">Select a place to show it on the map.</div>}
+      <p>{selectedVenue?.isSuggested ? 'Suggested location; confirm the venue is open before visiting. Directions appear here after you share your location.' : 'Venue and location details are provided by the owner. Your requested route is displayed on this page.'}</p>
+    </section>
+  )
+
   return (
     <DashboardShell path="/nearby" search={search} onSearch={setSearch}>
       <div className="nearby-venues-page">
@@ -140,7 +164,7 @@ export default function NearbyVenues() {
           <Link className="nearby-back-link" to="/dashboard">← Dashboard</Link>
           <span className="dashboard-kicker">FIND YOUR NEXT GROUND</span>
           <h1>Nearby Venues</h1>
-          <p>Find local sports venues, compare their distance, and open turn-by-turn directions.</p>
+          <p>Find local sports venues, compare their distance, and view directions on this page.</p>
         </div>
 
         <section className="nearby-location-panel">
@@ -180,12 +204,9 @@ export default function NearbyVenues() {
           </section>
 
           <aside className="nearby-map-column">
-            <section className="nearby-map-panel">
-              <div className="nearby-map-heading"><span><Icon name="map" size={19} /></span><div><b>PlayLink Map</b><small>{selectedVenue?.name || 'Venue area'}</small></div></div>
-              {selectedVenue ? <InlineDirectionsMap key={selectedVenue.id} className="nearby-inline-map" selectedVenue={selectedVenue} origin={userLocation} /> : <div className="nearby-empty">Select a place to show it on the map.</div>}
-              <p>{selectedVenue?.isSuggested ? 'Suggested location; confirm the venue is open before visiting. Driving directions are shown in Google Maps.' : 'Venue and location details are provided by the owner. Google Maps receives your location only when you request directions.'}</p>
-            </section>
-            {selectedVenue && <section className="nearby-directions-panel"><span className="eyebrow">{selectedVenue.isSuggested ? 'SUGGESTED PLACE' : 'SELECTED DESTINATION'}</span><h2>{selectedVenue.name}</h2><p>{selectedVenue.area} · {selectedVenue.sport}</p><p>{userLocation ? 'Google Maps is showing your driving route above.' : 'Use your location to see a route in Google Maps.'}</p>{!userLocation && <button className="button button-primary nearby-open-directions" type="button" onClick={useMyLocation} disabled={locating}><Icon name="compass" size={15} />{locating ? 'Finding your location…' : 'Show directions on this page'}</button>}</section>}
+            {mapExpanded && createPortal(<button className="map-screen-backdrop" type="button" aria-label="Close expanded map" onClick={() => setMapExpanded(false)} />, document.body)}
+            {mapPanel}
+            {selectedVenue && <section className="nearby-directions-panel"><span className="eyebrow">{selectedVenue.isSuggested ? 'SUGGESTED PLACE' : 'SELECTED DESTINATION'}</span><h2>{selectedVenue.name}</h2><p>{selectedVenue.area} · {selectedVenue.sport}</p><p>{userLocation ? 'Directions from your location are displayed in the PlayLink map above.' : 'Share your location to see directions here.'}</p>{!userLocation && <button className="button button-primary nearby-open-directions" type="button" onClick={useMyLocation} disabled={locating}><Icon name="compass" size={15} />{locating ? 'Finding your location…' : 'Show directions on this page'}</button>}</section>}
           </aside>
         </div>
       </div>

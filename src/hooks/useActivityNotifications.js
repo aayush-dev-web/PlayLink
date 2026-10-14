@@ -14,6 +14,10 @@ function readStoredIds(key) {
   }
 }
 
+function sameIds(first, second) {
+  return first.size === second.size && [...first].every((id) => second.has(id))
+}
+
 export { badgeLabel }
 
 export default function useActivityNotifications({ user, role, path, notificationOpen = false }) {
@@ -126,27 +130,6 @@ export default function useActivityNotifications({ user, role, path, notificatio
             })))
           }
       }
-      if (role === 'player' && user.id !== 'playlink-local-demo') {
-        const { data: moderationMessages, error: moderationError } = await supabase
-          .from('player_inbox_messages')
-          .select('id,subject,body,created_at')
-          .eq('user_id', user.id)
-          .eq('direction', 'team_to_player')
-          .order('created_at', { ascending: false })
-        if (moderationError) throw moderationError
-        nextActivities.push(...(moderationMessages || [])
-          .filter((message) => /^Community warning \d+ of \d+$/.test(message.subject || '')
-            || message.subject === 'PlayLink account restriction'
-            || message.subject === 'Appeal decision')
-          .map((message) => ({
-            id: `moderation:${message.id}`,
-            kind: 'moderation',
-            title: message.subject,
-            body: (message.body || '').split('\n')[0],
-            href: '/messages',
-            created_at: message.created_at,
-          })))
-      }
       if (role === 'player') {
         const [teamResult, eventsResult, ownedTeamsResult] = await Promise.all([
           supabase.from('community_teams').select('id,name,created_at,owner_id')
@@ -195,10 +178,136 @@ export default function useActivityNotifications({ user, role, path, notificatio
           })))
         }
       }
+      if (role !== 'admin' && user.id !== 'playlink-local-demo') {
+        const [directConversationsResult, inboxMessagesResult, membershipsResult] = await Promise.all([
+        supabase.from('player_direct_conversations')
+          .select('id,user_one_id,user_two_id')
+          .or(`user_one_id.eq.${user.id},user_two_id.eq.${user.id}`)
+          .order('updated_at', { ascending: false })
+          .limit(50),
+        supabase.from('player_inbox_messages')
+          .select('id,subject,body,created_at,direction')
+          .eq('user_id', user.id)
+          .eq('direction', 'team_to_player')
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase.from('team_memberships').select('team_id').eq('user_id', user.id),
+        ])
+        if (directConversationsResult.error) throw directConversationsResult.error
+        if (inboxMessagesResult.error) throw inboxMessagesResult.error
+        if (membershipsResult.error) throw membershipsResult.error
+
+        const directConversations = directConversationsResult.data || []
+        const otherPlayerIds = directConversations.map((conversation) => (
+        conversation.user_one_id === user.id ? conversation.user_two_id : conversation.user_one_id
+        ))
+        if (directConversations.length) {
+        const [directMessagesResult, playersResult] = await Promise.all([
+          supabase.from('player_direct_messages')
+            .select('id,conversation_id,sender_id,body,created_at')
+            .in('conversation_id', directConversations.map((conversation) => conversation.id))
+            .neq('sender_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(100),
+          supabase.from('player_listings').select('user_id,display_name').in('user_id', otherPlayerIds),
+        ])
+        if (directMessagesResult.error) throw directMessagesResult.error
+        if (playersResult.error) throw playersResult.error
+        const conversationById = new Map(directConversations.map((conversation) => [conversation.id, conversation]))
+        const playerNameById = new Map((playersResult.data || []).map((player) => [player.user_id, player.display_name]))
+        nextActivities.push(...(directMessagesResult.data || []).map((message) => {
+          const conversation = conversationById.get(message.conversation_id)
+          return {
+            id: `player-message:${message.id}`,
+            kind: 'message',
+            title: `Message from ${playerNameById.get(message.sender_id) || 'a PlayLink player'}`,
+            body: message.body,
+            href: `/messages?conversation_id=${encodeURIComponent(message.conversation_id)}`,
+            created_at: message.created_at,
+          }
+        }))
+        }
+
+        const inboxMessages = inboxMessagesResult.data || []
+        const moderationMessages = inboxMessages.filter((message) => (
+        /^Community warning \d+ of \d+$/.test(message.subject || '')
+        || message.subject === 'PlayLink account restriction'
+        || message.subject === 'Appeal decision'
+        ))
+        nextActivities.push(...moderationMessages.map((message) => ({
+        id: `moderation:${message.id}`,
+        kind: 'moderation',
+        title: message.subject,
+        body: (message.body || '').split('\n')[0],
+        href: '/messages',
+        created_at: message.created_at,
+        })))
+        nextActivities.push(...inboxMessages.filter((message) => !moderationMessages.includes(message)).map((message) => ({
+        id: `admin-message:${message.id}`,
+        kind: 'message',
+        title: message.subject || 'Message from PlayLink Admin',
+        body: message.body,
+        href: '/messages',
+        created_at: message.created_at,
+        })))
+
+        const ownedTeamsResult = await supabase.from('community_teams').select('id').eq('owner_id', user.id)
+        if (ownedTeamsResult.error) throw ownedTeamsResult.error
+        const teamIds = [...new Set([
+        ...(ownedTeamsResult.data || []).map((team) => team.id),
+        ...(membershipsResult.data || []).map((membership) => membership.team_id),
+        ])]
+        if (teamIds.length) {
+        const [teamResult, teamMessagesResult] = await Promise.all([
+          supabase.from('community_teams').select('id,name').in('id', teamIds),
+          supabase.from('team_messages')
+            .select('id,team_id,sender_id,sender_name,body,created_at')
+            .in('team_id', teamIds)
+            .neq('sender_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(100),
+        ])
+        if (teamResult.error) throw teamResult.error
+        if (teamMessagesResult.error) throw teamMessagesResult.error
+        const teamNames = new Map((teamResult.data || []).map((team) => [team.id, team.name]))
+        nextActivities.push(...(teamMessagesResult.data || []).map((message) => ({
+          id: `team-message:${message.id}`,
+          kind: 'message',
+          title: `Message in ${teamNames.get(message.team_id) || 'your team'}`,
+          body: `${message.sender_name}: ${message.body}`,
+          href: `/messages?team_id=${encodeURIComponent(message.team_id)}`,
+          created_at: message.created_at,
+        })))
+        }
+      }
       nextActivities.sort((first, second) => new Date(second.created_at || 0) - new Date(first.created_at || 0))
+      let nextReadIds = new Set([...readIds, ...readStoredIds(readKey(user.id, role))])
+      let nextInboxReadIds = new Set([...inboxReadIds, ...readStoredIds(inboxReadKey(user.id, role))])
+      if (user.id !== 'playlink-local-demo' && nextActivities.length) {
+        const activityIds = nextActivities.map((activity) => activity.id)
+        const { data: readReceipts, error: readError } = await supabase
+          .from('playlink_notification_reads')
+          .select('notification_id')
+          .eq('user_id', user.id)
+          .in('notification_id', [...activityIds, ...activityIds.map((id) => `inbox:${id}`)])
+        if (readError) {
+          if (['PGRST205', '42P01'].includes(readError.code)) {
+            throw new Error('Persistent notification status is not set up. Apply supabase/migrations/20261014120000_persistent_notification_reads.sql.')
+          }
+          throw readError
+        }
+        const receiptIds = (readReceipts || []).map((receipt) => receipt.notification_id)
+        nextReadIds = new Set([...nextReadIds, ...receiptIds.filter((id) => !id.startsWith('inbox:'))])
+        nextInboxReadIds = new Set([
+          ...nextInboxReadIds,
+          ...receiptIds.filter((id) => id.startsWith('inbox:')).map((id) => id.slice('inbox:'.length)),
+        ])
+        if (!sameIds(readIds, nextReadIds)) setReadIds(nextReadIds)
+        if (!sameIds(inboxReadIds, nextInboxReadIds)) setInboxReadIds(nextInboxReadIds)
+      }
       if (initialized.current) {
         const fresh = nextActivities.find((activity) => !knownIds.current.has(activity.id))
-        if (fresh && !readIds.has(fresh.id)) {
+        if (fresh && !nextReadIds.has(fresh.id)) {
           setNotice(fresh)
           window.setTimeout(() => setNotice((current) => current?.id === fresh.id ? null : current), 8000)
         }
@@ -210,7 +319,7 @@ export default function useActivityNotifications({ user, role, path, notificatio
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'New activity could not be refreshed.')
     }
-  }, [readIds, role, user])
+  }, [inboxReadIds, readIds, role, user])
 
   useEffect(() => {
     if (!user) return undefined
@@ -240,6 +349,14 @@ export default function useActivityNotifications({ user, role, path, notificatio
       if (user) window.localStorage.setItem(readKey(user.id, role), JSON.stringify([...updated]))
       return updated
     })
+    if (user && user.id !== 'playlink-local-demo' && supabase) {
+      supabase.from('playlink_notification_reads').upsert(
+        ids.map((notification_id) => ({ user_id: user.id, notification_id })),
+        { onConflict: 'user_id,notification_id' },
+      ).then(({ error: readError }) => {
+        if (readError) setError(`Notification read status could not be saved: ${readError.message}`)
+      })
+    }
     setNotice((current) => current && (!kind || current.kind === kind) ? null : current)
   }, [activities, readIds, role, user])
 
@@ -251,6 +368,14 @@ export default function useActivityNotifications({ user, role, path, notificatio
       if (user) window.localStorage.setItem(inboxReadKey(user.id, role), JSON.stringify([...updated]))
       return updated
     })
+    if (user && user.id !== 'playlink-local-demo' && supabase) {
+      supabase.from('playlink_notification_reads').upsert(
+        ids.map((id) => ({ user_id: user.id, notification_id: `inbox:${id}` })),
+        { onConflict: 'user_id,notification_id' },
+      ).then(({ error: readError }) => {
+        if (readError) setError(`Message read status could not be saved: ${readError.message}`)
+      })
+    }
   }, [activities, inboxReadIds, role, user])
 
   useEffect(() => {

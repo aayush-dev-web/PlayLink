@@ -38,27 +38,18 @@ export default function InlineDirectionsMap({
     mapUrl.searchParams.set('z', selectedVenue || hasOrigin ? '14' : '11')
   }
 
-  const openMapUrl = new URL(`https://www.google.com/maps/${selectedVenue && hasOrigin ? 'dir' : 'search'}/`)
-  openMapUrl.searchParams.set('api', '1')
-  if (selectedVenue && hasOrigin) {
-    openMapUrl.searchParams.set('origin', pointQuery(origin))
-    openMapUrl.searchParams.set('destination', destinationPoint)
-  } else {
-    openMapUrl.searchParams.set('query', selectedVenue ? destinationPoint : hasOrigin ? pointQuery(origin) : 'Kathmandu, Nepal')
-  }
-
   const title = selectedVenue && hasOrigin
-    ? `Google Maps directions to ${selectedVenue.name}`
+    ? `Directions to ${selectedVenue.name}`
     : selectedVenue
-      ? `Google Maps location for ${selectedVenue.name}`
-      : hasOrigin ? 'Google Maps centered on your location' : 'Google Maps centered on Kathmandu'
+      ? `Map location for ${selectedVenue.name}`
+      : hasOrigin ? 'Map centered on your location' : 'Map centered on Kathmandu'
   const message = statusMessage || (selectedVenue && hasOrigin
-    ? 'Google Maps is showing driving directions from your shared location.'
+    ? 'Directions are displayed on the map above.'
     : selectedVenue
-      ? 'Select “Show directions here using my location” to include your current position.'
+      ? 'Share your location to see directions to this venue on the map.'
       : hasOrigin
-        ? 'Your location is displayed on Google Maps.'
-        : 'Select a venue to center Google Maps on its location.')
+        ? 'Your location is shown on the map.'
+        : 'Select a venue to show its location on the map.')
 
   return (
     <div className={`inline-directions-map ${className}`.trim()}>
@@ -71,7 +62,7 @@ export default function InlineDirectionsMap({
         allowFullScreen
       />
       <p className="inline-directions-map-status" role="status">
-        {message} <a href={openMapUrl.href} target="_blank" rel="noreferrer">Open in Google Maps</a>
+        {message}
       </p>
     </div>
   )

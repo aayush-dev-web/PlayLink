@@ -6,6 +6,7 @@ import AdminMessenger from '../components/AdminMessenger.jsx'
 import SocialLinks from '../components/SocialLinks.jsx'
 import VenuePhotoPicker from '../components/VenuePhotoPicker.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
+import { designatedAdminEmail } from '../auth/adminAccess.js'
 import { supabase } from '../auth/supabase.js'
 import { uploadVenuePhoto, validateVenuePhoto } from '../data/venuePhotos.js'
 import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
@@ -48,6 +49,74 @@ function TableEmpty({ children, colSpan = 5 }) {
   return <tr><td className="admin-table-empty" colSpan={colSpan}>{children}</td></tr>
 }
 
+function AccountManagement({ member, sportOptions, onAction, busy }) {
+  const [passwordError, setPasswordError] = useState('')
+  const restrictedUntil = member.banned_until ? Date.parse(member.banned_until) : 0
+  const isRestricted = Number.isFinite(restrictedUntil) && restrictedUntil > Date.now()
+  const isDeactivated = isRestricted && restrictedUntil - Date.now() > 5 * 365 * 24 * 60 * 60 * 1000
+
+  return <details className="admin-account-management">
+    <summary>Manage account</summary>
+    <form className="admin-create-form" onSubmit={(event) => {
+      event.preventDefault()
+      const values = Object.fromEntries(new FormData(event.currentTarget))
+      onAction('update_profile', member, values)
+    }}>
+      <h4>Edit account and profile</h4>
+      <div className="admin-create-grid">
+        <label>Email<input name="email" type="email" maxLength="254" defaultValue={member.email || ''} required /></label>
+        <label>Username<input name="username" minLength="3" maxLength="24" pattern="[A-Za-z0-9_]+" defaultValue={member.username || ''} required /></label>
+        <label>Display name<input name="display_name" minLength="2" maxLength="120" defaultValue={member.display_name || ''} required /></label>
+        <label>Phone<input name="phone" maxLength="40" defaultValue={member.phone || ''} /></label>
+        <label>Account type<select name="account_type" defaultValue={member.account_type}><option value="player">Player</option><option value="team_organizer">Team organizer</option><option value="venue_owner">Venue owner</option></select></label>
+        <label>Preferred sport<select name="preferred_sport" defaultValue={member.preferred_sport || ''}><option value="">Not provided</option>{sportOptions.map((sport) => <option key={sport.slug} value={sport.name}>{sport.name}</option>)}<option value="Both">Both</option></select></label>
+        <label>Home area<input name="home_location" maxLength="160" defaultValue={member.home_location || ''} /></label>
+        <label>Home latitude<input name="home_latitude" type="number" min="-90" max="90" step="any" defaultValue={member.home_latitude ?? ''} /></label>
+        <label>Home longitude<input name="home_longitude" type="number" min="-180" max="180" step="any" defaultValue={member.home_longitude ?? ''} /></label>
+        <label>Position<input name="player_position" maxLength="80" defaultValue={member.player_position || ''} /></label>
+        <label>Experience level<input name="skill_level" maxLength="80" defaultValue={member.skill_level || ''} /></label>
+        <label>Avatar URL<input name="avatar_url" type="url" defaultValue={member.avatar_url || ''} /></label>
+        <label>Instagram URL<input name="instagram_url" type="url" defaultValue={member.instagram_url || ''} /></label>
+        <label>Facebook URL<input name="facebook_url" type="url" defaultValue={member.facebook_url || ''} /></label>
+        <label>TikTok URL<input name="tiktok_url" type="url" defaultValue={member.tiktok_url || ''} /></label>
+        <label className="admin-create-wide">About<textarea name="bio" rows="3" maxLength="2000" defaultValue={member.bio || ''} /></label>
+      </div>
+      <button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save account details'}</button>
+    </form>
+    <form className="admin-create-form" onSubmit={(event) => {
+      event.preventDefault()
+      const values = new FormData(event.currentTarget)
+      const password = String(values.get('password') || '')
+      if (password !== values.get('password_confirm')) {
+        setPasswordError('The passwords do not match.')
+        return
+      }
+      setPasswordError('')
+      onAction('change_password', member, { password }, event.currentTarget)
+    }}>
+      <h4>Set a new password</h4>
+      <div className="admin-create-grid"><label>New password<input name="password" type="password" minLength="8" maxLength="256" autoComplete="new-password" required /></label><label>Confirm password<input name="password_confirm" type="password" minLength="8" maxLength="256" autoComplete="new-password" required /></label></div>
+      {passwordError && <small className="auth-location-error" role="alert">{passwordError}</small>}
+      <button className="button button-secondary" type="submit" disabled={busy}>{busy ? 'Updating…' : 'Change password'}</button>
+    </form>
+    <div className="admin-account-access">
+      <span>Account access: <b>{isDeactivated ? 'Deactivated' : isRestricted ? `Suspended until ${dateTimeLabel(member.banned_until)}` : 'Active'}</b></span>
+      {isRestricted
+        ? <button type="button" disabled={busy} onClick={() => onAction('restore', member)}>{busy ? 'Updating…' : 'Restore access'}</button>
+        : <form onSubmit={(event) => {
+          event.preventDefault()
+          const duration = String(new FormData(event.currentTarget).get('duration') || '')
+          onAction('suspend', member, { duration })
+        }}>
+          <label>Suspend for<select name="duration" defaultValue="72h"><option value="24h">24 hours</option><option value="72h">3 days</option><option value="168h">7 days</option><option value="720h">30 days</option></select></label>
+          <button type="submit" disabled={busy}>{busy ? 'Updating…' : 'Suspend account'}</button>
+          <button type="button" className="is-danger" disabled={busy} onClick={() => onAction('deactivate', member)}>{busy ? 'Updating…' : 'Ban / deactivate account'}</button>
+        </form>}
+      <small>Deactivation blocks sign-in but retains the account and its data. You can restore access later.</small>
+    </div>
+  </details>
+}
+
 export default function AdminDashboard() {
   const { user, loading: authLoading } = useAuth()
   const location = useLocation()
@@ -56,6 +125,7 @@ export default function AdminDashboard() {
   const [data, setData] = useState(emptyData)
   const [loading, setLoading] = useState(true)
   const [authorized, setAuthorized] = useState(false)
+  const [adminDisplayName, setAdminDisplayName] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [updatingVenue, setUpdatingVenue] = useState('')
@@ -64,11 +134,12 @@ export default function AdminDashboard() {
   const [reviewingAppeal, setReviewingAppeal] = useState('')
   const [newAccountType, setNewAccountType] = useState('player')
   const [creatingAccount, setCreatingAccount] = useState(false)
+  const [updatingAccount, setUpdatingAccount] = useState('')
   const [creatingVenue, setCreatingVenue] = useState(false)
-  const [creatingSport, setCreatingSport] = useState(false)
   const [newVenuePhoto, setNewVenuePhoto] = useState(null)
+  const [updatingSport, setUpdatingSport] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const { sports: sportOptions } = usePlayLinkSports()
+  const { sports: sportOptions, venueSports: venueSportOptions, refresh: refreshSports } = usePlayLinkSports()
   const activity = useActivityNotifications({ user, role: 'admin', path: location.pathname, notificationOpen: notificationsOpen })
   const updateInboxMessages = useCallback((messages) => {
     setData((current) => ({ ...current, feedback: messages }))
@@ -103,18 +174,19 @@ export default function AdminDashboard() {
         return
       }
       setAuthorized(true)
-      const [usersResult, venuesResult, sportsResult, bookingsResult, reviewsResult, feedbackResult, reportsResult, actionsResult, appealsResult] = await Promise.all([
+      const [usersResult, venuesResult, sportsResult, bookingsResult, reviewsResult, feedbackResult, reportsResult, actionsResult, appealsResult, adminProfileResult] = await Promise.all([
         supabase.rpc('get_admin_user_profiles'),
         supabase.from('owner_venues').select('*').order('created_at', { ascending: false }),
-        supabase.from('playlink_sports').select('name,slug').order('name'),
+        supabase.from('playlink_sports').select('name,slug,is_game').order('name'),
         supabase.from('venue_bookings').select('*').order('created_at', { ascending: false }),
         supabase.from('venue_reviews').select('*').order('created_at', { ascending: false }),
         supabase.from('player_inbox_messages').select('id,user_id,subject,body,direction,created_at').order('created_at', { ascending: false }),
         supabase.from('playlink_user_reports').select('*').order('created_at', { ascending: false }),
         supabase.from('playlink_moderation_actions').select('*').order('created_at', { ascending: false }),
         supabase.from('playlink_moderation_appeals').select('*').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
       ])
-      const failed = [usersResult, venuesResult, sportsResult, bookingsResult, reviewsResult, feedbackResult, reportsResult, actionsResult, appealsResult].find((result) => result.error)
+      const failed = [usersResult, venuesResult, sportsResult, bookingsResult, reviewsResult, feedbackResult, reportsResult, actionsResult, appealsResult, adminProfileResult].find((result) => result.error)
       if (usersResult.error && ['PGRST202', '42883'].includes(usersResult.error.code)) {
         throw new Error('The full admin profile directory is not set up yet. Apply supabase/migrations/20261008170000_player_admin_profiles_and_inbox.sql.')
       }
@@ -142,6 +214,7 @@ export default function AdminDashboard() {
         moderationActions: actionsResult.data || [],
         appeals: appealsResult.data || [],
       })
+      setAdminDisplayName(user.email?.toLowerCase() === designatedAdminEmail ? 'aayush' : adminProfileResult.data?.display_name || '')
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'The admin dashboard could not be loaded.')
     } finally {
@@ -323,6 +396,39 @@ export default function AdminDashboard() {
     }
   }
 
+  async function manageAccount(action, member, details = {}, form = null) {
+    if (!supabase || updatingAccount) return
+    if (action === 'deactivate' && !window.confirm(`Deactivate ${member.display_name || member.email}'s account? Their data will be kept and access can be restored later.`)) return
+    setUpdatingAccount(member.id)
+    setError('')
+    setNotice('')
+    try {
+      const { data: result, error: actionError } = await supabase.functions.invoke('admin-manage-playlink-account', {
+        body: { action, user_id: member.id, ...details },
+      })
+      if (actionError) {
+        let message = result?.error || 'The account could not be updated. Please try again.'
+        if (actionError.context instanceof Response) {
+          const response = await actionError.context.json()
+          message = response.error || message
+        }
+        throw new Error(message)
+      }
+      if (result?.error) throw new Error(result.error)
+      await loadDashboard()
+      if (form instanceof HTMLFormElement) form.reset()
+      setNotice(action === 'update_profile' ? 'Account details saved.'
+        : action === 'change_password' ? 'Password changed.'
+          : action === 'suspend' ? 'Account temporarily suspended.'
+            : action === 'deactivate' ? 'Account deactivated. User data has been retained.'
+              : 'Account access restored.')
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'The account could not be updated. Please try again.')
+    } finally {
+      setUpdatingAccount('')
+    }
+  }
+
   async function createVenue(event) {
     event.preventDefault()
     if (!supabase || creatingVenue) return
@@ -337,6 +443,7 @@ export default function AdminDashboard() {
       if (!latitudeValue || !longitudeValue) {
         throw new Error('Venue latitude and longitude are required.')
       }
+
       const latitude = Number(latitudeValue)
       const longitude = Number(longitudeValue)
       if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
@@ -385,31 +492,52 @@ export default function AdminDashboard() {
 
   async function createSport(event) {
     event.preventDefault()
-    if (!supabase || creatingSport) return
+    if (!supabase || updatingSport) return
     const form = event.currentTarget
     const fields = new FormData(form)
-    const name = String(fields.get('name') || '').trim().replace(/\s+/g, ' ')
-    const slug = name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const name = String(fields.get('name') || '').trim()
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     if (slug.length < 2) {
-      setError('Enter a sport name with at least two letters or numbers.')
+      setError('Use a sport name containing at least two English letters or numbers.')
       return
     }
-    setCreatingSport(true)
+    setUpdatingSport(true)
     setError('')
     setNotice('')
     try {
-      const { data: created, error: createError } = await supabase.from('playlink_sports')
-        .insert({ name, slug }).select('name,slug').single()
-      if (createError) throw createError
-      setData((current) => ({ ...current, sports: [...current.sports, created].sort((a, b) => a.name.localeCompare(b.name)) }))
+      const { error: insertError } = await supabase.from('playlink_sports').insert({
+        name,
+        slug,
+        is_game: fields.get('is_game') === 'true',
+      })
+      if (insertError) throw insertError
+      await loadDashboard()
+      refreshSports()
       form.reset()
-      setNotice(`${created.name} is now available across PlayLink.`)
-    } catch (createError) {
-      setError(createError instanceof Error && createError.message.includes('duplicate')
-        ? 'That sport or its URL slug already exists.'
-        : createError instanceof Error ? createError.message : 'The sport could not be added.')
+      setNotice(`${name} has been added to the PlayLink sport choices.`)
+    } catch (sportError) {
+      setError(sportError instanceof Error ? sportError.message : 'The sport could not be added.')
     } finally {
-      setCreatingSport(false)
+      setUpdatingSport(false)
+    }
+  }
+
+  async function deleteSport(sport) {
+    if (!supabase || updatingSport) return
+    if (!window.confirm(`Delete ${sport.name} from PlayLink? It cannot be removed while profiles, games, venues, or bookings use it.`)) return
+    setUpdatingSport(true)
+    setError('')
+    setNotice('')
+    try {
+      const { error: deleteError } = await supabase.rpc('admin_delete_playlink_sport', { p_slug: sport.slug })
+      if (deleteError) throw deleteError
+      await loadDashboard()
+      refreshSports()
+      setNotice(`${sport.name} has been removed from the PlayLink sport choices.`)
+    } catch (sportError) {
+      setError(sportError instanceof Error ? sportError.message : 'The sport could not be deleted.')
+    } finally {
+      setUpdatingSport(false)
     }
   }
 
@@ -443,7 +571,7 @@ export default function AdminDashboard() {
         <div className="admin-sidebar-foot"><Icon name="shield-check" size={16} /><span>Restricted admin workspace</span></div>
       </aside>
       <main className="admin-main">
-        <header className="admin-topbar"><div><small>PLAYLINK / ADMIN</small><b>{activeSection.label}</b></div><span className="admin-topbar-spacer" /><span className="admin-notifications"><button className="admin-notification-button" type="button" aria-label={`Notifications${activity.unreadCount ? ` (${activity.unreadCount} unread)` : ''}`} aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}><Icon name="bell" size={17} />{activity.unreadCount > 0 && <small className="activity-badge">{activity.formatCount(activity.unreadCount)}</small>}</button>{notificationsOpen && <section className="admin-notification-popover" aria-label="Admin notifications"><header><span><b>Platform activity</b><small>New accounts, events, teams, reports, and more</small></span><button type="button" aria-label="Close notifications" onClick={() => setNotificationsOpen(false)}>×</button></header>{activity.error ? <p className="admin-notification-empty is-error" role="alert">{activity.error}</p> : activity.activities.length ? <div className="admin-notification-list">{activity.activities.map((item) => <button type="button" key={item.id} onClick={() => openAdminActivity(item)}><span><Icon name={item.kind === 'report' ? 'shield-check' : item.kind === 'team' ? 'teams' : item.kind === 'event' || item.kind === 'booking' ? 'calendar' : item.kind === 'message' || item.kind === 'appeal' ? 'message' : item.kind === 'review' ? 'star' : item.kind === 'venue' ? 'venue' : 'player'} size={15} /></span><span><b>{item.title}</b><small>{item.body} · {new Date(item.created_at).toLocaleDateString()}</small></span></button>)}</div> : <p className="admin-notification-empty">There is no recent platform activity.</p>}</section>}</span><span className="admin-user-label"><i />{user.user_metadata?.full_name || user.email}</span><button type="button" onClick={signOut}>Sign out</button></header>
+        <header className="admin-topbar"><div><small>PLAYLINK / ADMIN</small><b>{activeSection.label}</b></div><span className="admin-topbar-spacer" /><span className="admin-notifications"><button className="admin-notification-button" type="button" aria-label={`Notifications${activity.unreadCount ? ` (${activity.unreadCount} unread)` : ''}`} aria-expanded={notificationsOpen} onClick={() => { if (!notificationsOpen) activity.markRead(); setNotificationsOpen((open) => !open) }}><Icon name="bell" size={17} />{activity.unreadCount > 0 && <small className="activity-badge">{activity.formatCount(activity.unreadCount)}</small>}</button>{notificationsOpen && <section className="admin-notification-popover" aria-label="Admin notifications"><header><span><b>Platform activity</b><small>New accounts, events, teams, reports, and more</small></span><button type="button" aria-label="Close notifications" onClick={() => setNotificationsOpen(false)}>×</button></header>{activity.error ? <p className="admin-notification-empty is-error" role="alert">{activity.error}</p> : activity.activities.length ? <div className="admin-notification-list">{activity.activities.map((item) => <button type="button" key={item.id} onClick={() => openAdminActivity(item)}><span><Icon name={item.kind === 'report' ? 'shield-check' : item.kind === 'team' ? 'teams' : item.kind === 'event' || item.kind === 'booking' ? 'calendar' : item.kind === 'message' || item.kind === 'appeal' ? 'message' : item.kind === 'review' ? 'star' : item.kind === 'venue' ? 'venue' : 'player'} size={15} /></span><span><b>{item.title}</b><small>{item.body} · {new Date(item.created_at).toLocaleDateString()}</small></span></button>)}</div> : <p className="admin-notification-empty">There is no recent platform activity.</p>}</section>}</span><span className="admin-user-label"><i />{adminDisplayName || user.user_metadata?.full_name || user.email}</span><button type="button" onClick={signOut}>Sign out</button></header>
         <div className="admin-content">
           <header className="admin-page-heading"><div><span>PLATFORM MANAGEMENT</span><h1>{section === 'overview' ? 'Admin overview' : activeSection.label}</h1><p>{section === 'overview' ? 'A live view of PlayLink accounts, facilities, and community activity.' : `Browse and manage PlayLink ${activeSection.label.toLowerCase()}.`}</p></div><button className="admin-refresh-button" type="button" onClick={loadDashboard}><Icon name="refresh" size={15} /> Refresh data</button></header>
           {error && <p className="admin-feedback error" role="alert">{error}<button type="button" onClick={loadDashboard}>Retry</button></p>}
@@ -466,7 +594,7 @@ export default function AdminDashboard() {
                 <label>Username<input name="username" minLength="3" maxLength="24" pattern="[A-Za-z0-9_]+" autoComplete="off" required /></label>
                 <label>Display name<input name="display_name" minLength="2" maxLength="120" required /></label>
                 <label>Phone <span>(optional)</span><input name="phone" maxLength="40" /></label>
-                <label>Account type<select name="account_type" value={newAccountType} onChange={(event) => setNewAccountType(event.target.value)}><option value="player">Player</option><option value="venue_owner">Venue owner</option></select></label>
+                <label>Account type<select name="account_type" value={newAccountType} onChange={(event) => setNewAccountType(event.target.value)}><option value="player">Player</option><option value="team_organizer">Team organizer</option><option value="venue_owner">Venue owner</option></select></label>
                 <label>Temporary password<input name="password" type="password" minLength="8" maxLength="256" autoComplete="new-password" required /></label>
                 <label>Home area<input name="home_location" minLength="2" maxLength="160" placeholder="City or district" required /></label>
                 <label>Home latitude<input name="home_latitude" type="number" min="-90" max="90" step="any" required /></label>
@@ -474,7 +602,7 @@ export default function AdminDashboard() {
                 {newAccountType === 'venue_owner' && <>
                   <label>First venue name<input name="venue_name" minLength="2" maxLength="120" required /></label>
                   <label>First venue area<input name="venue_area" minLength="2" maxLength="160" required /></label>
-                  <label>First venue sport<select name="venue_sport" required><option value="">Choose sport</option>{sportOptions.map((item) => <option key={item.slug} value={item.name}>{item.name}</option>)}<option value="Both">Both</option></select></label>
+                  <label>First venue sport<select name="venue_sport" required><option value="">Choose sport</option>{venueSportOptions.map((item) => <option key={item.slug} value={item.name}>{item.name}</option>)}</select></label>
                   <label>First venue latitude<input name="venue_latitude" type="number" min="-90" max="90" step="any" required /></label>
                   <label>First venue longitude<input name="venue_longitude" type="number" min="-180" max="180" step="any" required /></label>
                 </>}
@@ -487,7 +615,7 @@ export default function AdminDashboard() {
               <div className="admin-create-grid">
                 <label>Venue name<input name="name" minLength="2" maxLength="120" required /></label>
                 <label>Venue owner<select name="owner_id" required defaultValue=""><option value="" disabled>Choose an owner</option>{data.users.filter((member) => member.account_type === 'venue_owner').map((owner) => <option key={owner.id} value={owner.id}>{owner.display_name || owner.username} · {owner.email}</option>)}</select></label>
-                <label>Sport<select name="sport" required defaultValue=""><option value="" disabled>Choose sport</option>{sportOptions.map((item) => <option key={item.slug} value={item.name}>{item.name}</option>)}<option value="Both">Both</option></select></label>
+                <label>Sport<select name="sport" required defaultValue=""><option value="" disabled>Choose sport</option>{venueSportOptions.map((item) => <option key={item.slug} value={item.name}>{item.name}</option>)}</select></label>
                 <label>Area<input name="area" minLength="2" maxLength="160" required /></label>
                 <label>Address<input name="address" maxLength="240" /></label>
                 <label>Hourly rate (NPR)<input name="price_per_hour" type="number" min="0" max="99999999" step="50" defaultValue="2500" required /></label>
@@ -503,16 +631,25 @@ export default function AdminDashboard() {
             </form>}
             {section === 'sports' && <form className="admin-create-form" onSubmit={createSport}>
               <h3>Add sport</h3>
-              <p>New sports become available in venue, player, team, and event forms and filters.</p>
-              <div className="admin-create-grid"><label>Sport name<input name="name" minLength="2" maxLength="40" required /></label></div>
-              <button className="button button-primary" type="submit" disabled={creatingSport}>{creatingSport ? 'Adding sport…' : 'Add sport'}</button>
+              <p>Game sports become available for player profiles, teams, and events. Every sport is also available for venue listings.</p>
+              <div className="admin-create-grid">
+                <label>Sport name<input name="name" minLength="2" maxLength="40" pattern="[A-Za-z0-9][A-Za-z0-9 .'-]*" title="Use letters, numbers, spaces, apostrophes, periods, or hyphens." required /></label>
+                <label>Available for games<select name="is_game" defaultValue="true"><option value="true">Yes — games and venues</option><option value="false">No — venues only</option></select></label>
+              </div>
+              <button className="button button-primary" type="submit" disabled={updatingSport}>{updatingSport ? 'Adding…' : 'Add sport'}</button>
             </form>}
             {section === 'feedback'
               ? <AdminMessenger users={data.users} initialMessages={data.feedback} adminUserId={user.id} search={search} onMessagesChanged={updateInboxMessages} />
               : <div className="admin-table-wrap"><table>
-              {section === 'users' && <><thead><tr><th>Profile</th><th>Username</th><th>Account type</th><th>Joined</th><th>Account ID</th></tr></thead><tbody>{users.map((member) => <tr key={member.id}><td><div className="admin-profile-cell"><span className="admin-profile-avatar">{member.avatar_url ? <img src={member.avatar_url} alt={`${member.display_name || member.username} profile`} /> : <span>{(member.display_name || member.username || 'P').slice(0, 1).toUpperCase()}</span>}</span><div><b>{member.display_name || 'Unnamed member'}</b><small>{member.email || 'Email unavailable'}</small><small>{member.home_location || 'Location not provided'}</small><SocialLinks profile={member} className="admin-profile-socials" /><details className="admin-profile-details"><summary>Full profile</summary><dl><dt>Phone</dt><dd>{member.phone || 'Not provided'}</dd><dt>About</dt><dd>{member.bio || 'Not provided'}</dd><dt>Preferred sport</dt><dd>{member.preferred_sport || 'Not provided'}</dd><dt>Position</dt><dd>{member.player_position || 'Not provided'}</dd><dt>Experience</dt><dd>{member.skill_level || 'Not provided'}</dd><dt>Home coordinates</dt><dd>{member.home_latitude ?? '—'}, {member.home_longitude ?? '—'}</dd></dl></details></div></div></td><td>@{member.username}</td><td><StatusPill value={member.account_type.replace('_', ' ')} /></td><td>{dateLabel(member.created_at)}</td><td><code>{member.id}</code></td></tr>)}{!users.length && <TableEmpty>No users match your search.</TableEmpty>}</tbody></>}
+              {section === 'users' && <><thead><tr><th>Profile</th><th>Username</th><th>Account type</th><th>Joined</th><th>Account status</th></tr></thead><tbody>{users.map((member) => {
+                const blockedUntil = member.banned_until ? Date.parse(member.banned_until) : 0
+                const blocked = Number.isFinite(blockedUntil) && blockedUntil > Date.now()
+                const deactivated = blocked && blockedUntil - Date.now() > 5 * 365 * 24 * 60 * 60 * 1000
+                const accessLabel = deactivated ? 'Deactivated' : blocked ? 'Suspended' : 'Active'
+                return <tr key={member.id}><td><div className="admin-profile-cell"><span className="admin-profile-avatar">{member.avatar_url ? <img src={member.avatar_url} alt={`${member.display_name || member.username} profile`} /> : <span>{(member.display_name || member.username || 'P').slice(0, 1).toUpperCase()}</span>}</span><div><b>{member.display_name || 'Unnamed member'}</b><small>{member.email || 'Email unavailable'}</small><small>{member.home_location || 'Location not provided'}</small><SocialLinks profile={member} className="admin-profile-socials" /><details className="admin-profile-details"><summary>Full profile</summary><dl><dt>Phone</dt><dd>{member.phone || 'Not provided'}</dd><dt>About</dt><dd>{member.bio || 'Not provided'}</dd><dt>Preferred sport</dt><dd>{member.preferred_sport || 'Not provided'}</dd><dt>Position</dt><dd>{member.player_position || 'Not provided'}</dd><dt>Experience</dt><dd>{member.skill_level || 'Not provided'}</dd><dt>Avatar</dt><dd>{member.avatar_url || 'Not provided'}</dd><dt>Instagram</dt><dd>{member.instagram_url || 'Not provided'}</dd><dt>Facebook</dt><dd>{member.facebook_url || 'Not provided'}</dd><dt>TikTok</dt><dd>{member.tiktok_url || 'Not provided'}</dd><dt>Home coordinates</dt><dd>{member.home_latitude ?? '—'}, {member.home_longitude ?? '—'}</dd><dt>Joined</dt><dd>{dateTimeLabel(member.created_at)}</dd></dl></details><AccountManagement key={JSON.stringify(member)} member={member} sportOptions={sportOptions} busy={updatingAccount === member.id} onAction={manageAccount} /></div></div></td><td>@{member.username}</td><td><StatusPill value={member.account_type.replace('_', ' ')} /></td><td>{dateLabel(member.created_at)}</td><td><StatusPill value={accessLabel} />{blocked && <small>{dateTimeLabel(member.banned_until)}</small>}</td></tr>
+              })}{!users.length && <TableEmpty colSpan={5}>No users match your search.</TableEmpty>}</tbody></>}
               {section === 'venues' && <><thead><tr><th>Venue</th><th>Sport</th><th>Area</th><th>Rate / hour</th><th>Status / action</th></tr></thead><tbody>{venues.map((venue) => <tr key={venue.id}><td><b>{venue.name}</b><small>{venue.address || 'Address not provided'}</small></td><td>{venue.sport}</td><td>{venue.area}</td><td>Rs {Number(venue.price_per_hour || 0).toLocaleString('en-IN')}</td><td><div className="admin-venue-moderation"><StatusPill value={venue.is_active ? 'Active' : 'Paused'} /><button type="button" disabled={updatingVenue === venue.id} onClick={() => toggleVenue(venue)}>{updatingVenue === venue.id ? 'Saving…' : venue.is_active ? 'Pause listing' : 'Activate'}</button></div></td></tr>)}{!venues.length && <TableEmpty>No venues match your search.</TableEmpty>}</tbody></>}
-              {section === 'sports' && <><thead><tr><th>Sport</th><th>Identifier</th><th>Availability</th></tr></thead><tbody>{sports.map((sport) => <tr key={sport.slug}><td><b>{sport.name}</b></td><td><code>{sport.slug}</code></td><td>Available across PlayLink</td></tr>)}{!sports.length && <TableEmpty>No sports match your search.</TableEmpty>}</tbody></>}
+              {section === 'sports' && <><thead><tr><th>Sport</th><th>Identifier</th><th>Used for</th><th>Action</th></tr></thead><tbody>{sports.map((sport) => <tr key={sport.slug}><td><b>{sport.name}</b></td><td><code>{sport.slug}</code></td><td>{sport.is_game ? 'Games, teams, player profiles, and venues' : 'Venues only'}</td><td><button className="admin-sport-delete" type="button" disabled={updatingSport} onClick={() => deleteSport(sport)}>{updatingSport ? 'Working…' : 'Delete sport'}</button></td></tr>)}{!sports.length && <TableEmpty colSpan={4}>No sports match your search.</TableEmpty>}</tbody></>}
               {section === 'bookings' && <><thead><tr><th>Player</th><th>Venue</th><th>Sport</th><th>Scheduled</th><th>Status</th></tr></thead><tbody>{bookings.map((booking) => <tr key={booking.id}><td><b>{booking.customer_name}</b><small>{booking.customer_contact || 'Contact not provided'}</small></td><td>{venueNames.get(booking.venue_id) || 'Venue unavailable'}</td><td>{booking.sport}</td><td>{dateTimeLabel(booking.starts_at)} – {new Date(booking.ends_at).toLocaleTimeString('en-NP', { hour: 'numeric', minute: '2-digit' })}</td><td><StatusPill value={booking.status} /></td></tr>)}{!bookings.length && <TableEmpty>No bookings match your search.</TableEmpty>}</tbody></>}
               {section === 'reviews' && <><thead><tr><th>Player</th><th>Venue</th><th>Rating</th><th>Comment</th><th>Submitted</th></tr></thead><tbody>{reviews.map((review) => <tr key={review.id}><td><b>{review.reviewer_name}</b></td><td>{venueNames.get(review.venue_id) || 'Venue unavailable'}</td><td><span className="admin-review-rating">{'★'.repeat(Number(review.rating))}{'☆'.repeat(5 - Number(review.rating))}</span></td><td className="admin-review-copy">{review.review}</td><td>{dateLabel(review.created_at)}</td></tr>)}{!reviews.length && <TableEmpty>No reviews match your search.</TableEmpty>}</tbody></>}
               {section === 'reports' && <><thead><tr><th>Submitted</th><th>Reported by</th><th>Account reported</th><th>Report details</th><th>Review action</th></tr></thead><tbody>{reports.map((report) => {

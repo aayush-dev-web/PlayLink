@@ -22,6 +22,8 @@ import { supabase } from './auth/supabase.js'
 import RestrictedAccountInbox from './components/RestrictedAccountInbox.jsx'
 import LiveScoresPage from './pages/LiveScoresPage.jsx'
 import Terms from './pages/Terms.jsx'
+import PageEntryAnimation from './components/PageEntryAnimation.jsx'
+import OwnerDashboardPreview from './pages/OwnerDashboardPreview.jsx'
 
 export default function App() {
   const location = useLocation()
@@ -29,6 +31,7 @@ export default function App() {
   const { user, loading } = useAuth()
   const [restriction, setRestriction] = useState({ userId: '', loading: false, data: null, error: '' })
   const [signOutError, setSignOutError] = useState('')
+  const animationPageKey = `${user ? 'signed-in' : 'guest'}:${path}`
 
   useEffect(() => {
     if (!user || user.id === 'playlink-local-demo') {
@@ -95,56 +98,57 @@ export default function App() {
     if (loading) return <div className="auth-loading" role="status">Loading PlayLink…</div>
     return <Navigate to={`/sign-in?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
   }
+  let page
   if (path === '/') {
     if (loading) return <div className="auth-loading" role="status">Loading PlayLink…</div>
-    return user
+    page = user
       ? <Navigate to={isDesignatedAdmin(user) ? '/admin' : '/dashboard'} replace />
       : <DashboardHome />
-  }
-  if (path === '/venues') return <Venues />
-  if (path === '/favorite-venues') return <FavoriteVenues />
-  if (path === '/nearby') return <NearbyVenues />
-  if (path === '/events') return <Events />
-  const eventDetailMatch = path.match(/^\/events\/([0-9a-f-]+)$/i)
-  if (eventDetailMatch) return <EventDetails eventId={eventDetailMatch[1]} key={eventDetailMatch[1]} />
-  if (path === '/community' || path === '/teams') return <Community mode="teams" />
-  if (path === '/players') return <Community mode="players" />
-  if (path === '/messages') return <Messages />
-  if (path === '/settings') return <Settings />
-  if (path === '/live-scores') {
+  } else if (path === '/venues') page = <Venues />
+  else if (path === '/favorite-venues') page = <FavoriteVenues />
+  else if (path === '/nearby') page = <NearbyVenues />
+  else if (path === '/events') page = <Events />
+  else if (path.match(/^\/events\/([0-9a-f-]+)$/i)) {
+    const eventDetailMatch = path.match(/^\/events\/([0-9a-f-]+)$/i)
+    page = <EventDetails eventId={eventDetailMatch[1]} key={eventDetailMatch[1]} />
+  } else if (path === '/community' || path === '/teams') page = <Community mode="teams" />
+  else if (path === '/players') page = <Community mode="players" />
+  else if (path === '/messages') page = <Messages />
+  else if (path === '/settings') page = <Settings />
+  else if (path === '/live-scores') {
     if (loading) return <div className="auth-loading" role="status">Connecting to your account…</div>
-    return <LiveScoresPage backHref={user && isDesignatedAdmin(user) ? '/admin' : undefined} />
-  }
-  if (path === '/sign-in') return <AuthPage key="login" mode="login" />
-  if (path === '/get-started' || path === '/sign-up') return <AuthPage key="signup" mode="signup" />
-  if (path === '/terms') return <Terms />
-  if (path === '/complete-google-profile') return <AuthPage key="google-complete" mode="google-complete" />
-  if (path === '/forgot-password') return <AuthPage key="forgot" mode="forgot" />
-  if (path === '/reset-password') return <AuthPage key="reset" mode="reset" />
-  if (path === '/admin') return <AdminDashboard />
-  if (path === '/owner' || path.startsWith('/owner/')) return <AccountDashboardRoute ownerOnly />
-  if (path === '/dashboard') {
+    page = <LiveScoresPage backHref={user && isDesignatedAdmin(user) ? '/admin' : undefined} />
+  } else if (path === '/sign-in') page = <AuthPage key="login" mode="login" />
+  else if (path === '/get-started' || path === '/sign-up') page = <AuthPage key="signup" mode="signup" />
+  else if (path === '/terms') page = <Terms />
+  else if (path === '/complete-google-profile') page = <AuthPage key="google-complete" mode="google-complete" />
+  else if (path === '/forgot-password') page = <AuthPage key="forgot" mode="forgot" />
+  else if (path === '/reset-password') page = <AuthPage key="reset" mode="reset" />
+  else if (path === '/admin') page = <AdminDashboard />
+  else if (path === '/owner-preview') page = <OwnerDashboardPreview />
+  else if (path === '/owner' || path.startsWith('/owner/')) page = <AccountDashboardRoute ownerOnly />
+  else if (path === '/dashboard') {
     if (loading) return <div className="auth-loading" role="status">Connecting to your account…</div>
     if (user && isDesignatedAdmin(user)) return <Navigate to="/admin" replace />
-    return user ? <AccountDashboardRoute /> : <DashboardHome />
-  }
-  if (path === '/profile') {
+    page = user ? <AccountDashboardRoute /> : <DashboardHome />
+  } else if (path === '/profile') {
     if (loading) return <div className="auth-loading" role="status">Connecting to your account…</div>
-    return user ? <DashboardProfile /> : <Navigate to="/sign-in?next=/profile" replace />
-  }
-  if (path === '/notifications') {
+    page = user ? <DashboardProfile /> : <Navigate to="/sign-in?next=/profile" replace />
+  } else if (path === '/notifications') {
     if (loading) return <div className="auth-loading" role="status">Connecting to your account…</div>
-    return user ? <Navigate to="/dashboard?notifications=1" replace /> : <Navigate to="/sign-in?next=/notifications" replace />
+    page = user ? <Navigate to="/dashboard?notifications=1" replace /> : <Navigate to="/sign-in?next=/notifications" replace />
+  } else {
+    const pages = {
+      '/list-venue': <Placeholder kind="list-venue" />,
+    }
+    page = (
+      <>
+        <a className="skip-link" href="#main-content">Skip to content</a>
+        <Header path={path} />
+        <main id="main-content">{pages[path] || <Placeholder kind="not-found" />}</main>
+        <Footer />
+      </>
+    )
   }
-  const pages = {
-    '/list-venue': <Placeholder kind="list-venue" />,
-  }
-  return (
-    <>
-      <a className="skip-link" href="#main-content">Skip to content</a>
-      <Header path={path} />
-      <main id="main-content">{pages[path] || <Placeholder kind="not-found" />}</main>
-      <Footer />
-    </>
-  )
+  return <PageEntryAnimation key={animationPageKey} pageKey={animationPageKey}>{page}</PageEntryAnimation>
 }

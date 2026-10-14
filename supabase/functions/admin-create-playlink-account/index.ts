@@ -8,8 +8,8 @@ function json(body: unknown, headers: Record<string, string>, status = 200) {
   })
 }
 
-function isAccountType(value: unknown): value is 'player' | 'venue_owner' {
-  return value === 'player' || value === 'venue_owner'
+function isAccountType(value: unknown): value is 'player' | 'team_organizer' | 'venue_owner' {
+  return value === 'player' || value === 'team_organizer' || value === 'venue_owner'
 }
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {

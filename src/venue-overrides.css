@@ -293,6 +293,44 @@ textarea {
   min-height: 28px;
 }
 
+.nearby-map-panel.is-expanded {
+  position: fixed;
+  z-index: 1101;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  width: min(78vw,1200px);
+  height: 78vh;
+  height: 78dvh;
+  max-height: 80dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translate(-50%,-50%);
+  box-shadow: 0 20px 70px rgba(5,24,41,.3);
+}
+
+.nearby-map-panel.is-expanded .nearby-inline-map {
+  min-height: 0;
+  flex: 1;
+}
+
+.nearby-map-panel.is-expanded .nearby-inline-map .inline-directions-map-canvas {
+  min-height: 0;
+  flex: 1;
+  height: auto;
+}
+
+@media (max-width: 700px) {
+  .google-map-panel.is-expanded,
+  .nearby-map-panel.is-expanded {
+    width: 78vw;
+    height: 78dvh;
+    max-height: 82dvh;
+  }
+}
+
 .nearby-venue-title {
   width: 100%;
   border: 0;
@@ -696,12 +734,18 @@ textarea {
 
 .google-map-panel.is-expanded {
   position: fixed!important;
-  z-index: 1001;
+  z-index: 1101;
   top: 50%!important;
+  right: auto!important;
+  bottom: auto!important;
   left: 50%;
-  width: min(1080px,calc(100vw - 56px));
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
+  width: min(78vw,1200px);
+  height: 78vh;
+  height: 78dvh;
+  max-height: 80dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   transform: translate(-50%,-50%);
   box-shadow: 0 20px 70px rgba(5,24,41,.3);
 }
@@ -720,13 +764,24 @@ textarea {
 }
 
 .google-map-panel.is-expanded .venue-map-canvas {
-  height: min(58vh,620px)!important;
-  min-height: 340px;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: auto!important;
+}
+
+.google-map-panel.is-expanded .venue-map-canvas .inline-directions-map-canvas {
+  min-height: 0;
+  flex: 1;
+  height: auto;
 }
 
 .google-map-panel.is-expanded .google-map-venue-list {
   grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
   gap: 6px;
+  max-height: 92px;
+  overflow-y: auto;
   padding: 10px 14px 4px;
 }
 
@@ -834,13 +889,14 @@ textarea {
   }
 
   .google-map-panel.is-expanded {
-    width: calc(100vw - 24px);
-    max-height: calc(100dvh - 24px);
+    width: 78vw;
+    height: 78dvh;
+    max-height: 82dvh;
   }
 
   .google-map-panel.is-expanded .venue-map-canvas {
-    height: 54dvh!important;
-    min-height: 260px;
+    height: auto!important;
+    min-height: 0;
   }
 }
 

@@ -38,6 +38,7 @@ export default function PlayerDirectMessages() {
   const { user } = useAuth()
   const [searchParams] = useSearchParams()
   const requestedPlayerId = searchParams.get('player_id') || ''
+  const requestedConversationId = searchParams.get('conversation_id') || ''
   const openAdminContact = searchParams.get('contact') === 'admin'
   const [conversations, setConversations] = useState([])
   const [teamMessages, setTeamMessages] = useState([])
@@ -64,21 +65,21 @@ export default function PlayerDirectMessages() {
       .toLowerCase().includes(search.toLowerCase())
   )), [inboxConversations, search])
 
-  const loadInbox = useCallback(async (initial = false, playerId = '') => {
+  const loadInbox = useCallback(async (initial = false, playerId = '', conversationId = '') => {
     if (!user || !supabase) {
       setLoading(false)
       return
     }
     if (initial) setLoading(true)
     try {
-      let requestedConversationId = ''
+      let startedConversationId = ''
       if (playerId) {
         if (!/^[0-9a-f-]{36}$/i.test(playerId)) throw new Error('That player profile link is not valid.')
         const { data, error: startError } = await supabase.rpc('start_player_conversation', {
           requested_player_id: playerId,
         })
         if (startError) throw startError
-        requestedConversationId = data
+        startedConversationId = data
       }
 
       const [{ data: rows, error: conversationError }, { data: teamRows, error: teamError }] = await Promise.all([
@@ -125,7 +126,9 @@ export default function PlayerDirectMessages() {
         }
       })
       setConversations(nextConversations)
-      setActiveId((current) => requestedConversationId || (openAdminContact ? 'playlink-team' : '')
+      setActiveId((current) => startedConversationId
+        || (conversationId && nextConversations.some((conversation) => conversation.id === conversationId) ? conversationId : '')
+        || (openAdminContact ? 'playlink-team' : '')
         || (current && (current === 'playlink-team' || nextConversations.some((conversation) => conversation.id === current))
           ? current
           : 'playlink-team'))
@@ -138,8 +141,8 @@ export default function PlayerDirectMessages() {
   }, [user, openAdminContact])
 
   useEffect(() => {
-    loadInbox(true, requestedPlayerId)
-  }, [loadInbox, requestedPlayerId])
+    loadInbox(true, requestedPlayerId, requestedConversationId)
+  }, [loadInbox, requestedConversationId, requestedPlayerId])
 
   useEffect(() => {
     if (!user) return undefined
