@@ -1,5 +1,3 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
-
 type JsonRecord = Record<string, unknown>
 
 function corsForScoreRequest(request: Request) {
@@ -51,6 +49,11 @@ function text(value: unknown) {
   return typeof value === 'string' ? value : ''
 }
 
+function providerKey(value: unknown) {
+  if (typeof value === 'string') return value
+  return typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : ''
+}
+
 function isCricketLive(fixture: JsonRecord) {
   return fixture.live === true || fixture.live === 1 || fixture.live === '1'
 }
@@ -63,6 +66,69 @@ function isCricketDataLive(match: JsonRecord) {
 
 function isNepalPremierLeague(value: unknown) {
   return /\bnepal premier league\b|\bnpl\b/i.test(text(value))
+}
+
+function normalizeApiCricketEvent(event: JsonRecord): JsonRecord {
+  const matchKey = providerKey(event.event_key)
+  const homeTeam = text(event.event_home_team) || 'Home'
+  const awayTeam = text(event.event_away_team) || 'Away'
+  const homeCurrent = text(event.event_service_home)
+  const awayCurrent = text(event.event_service_away)
+  const homeFinal = text(event.event_home_final_result)
+  const awayFinal = text(event.event_away_final_result)
+  const homeScore = homeCurrent || homeFinal
+  const awayScore = awayCurrent || awayFinal
+  const status = text(event.event_status) || text(event.event_status_info)
+  const live = text(event.event_live) === '1' || isCricketDataLive({ status })
+  const scoreLines = [
+    ...(homeScore ? [{ id: `${matchKey}-home`, team: { name: homeTeam }, total: homeScore }] : []),
+    ...(awayScore ? [{ id: `${matchKey}-away`, team: { name: awayTeam }, total: awayScore }] : []),
+  ]
+  const startDate = text(event.event_date_start)
+  const startTime = text(event.event_time)
+  const dateTime = startDate ? `${startDate}T${startTime || '00:00'}:00Z` : ''
+  return {
+    id: `apicricket-${matchKey}`,
+    eventKey: matchKey,
+    sport: 'cricket',
+    league: text(event.league_name),
+    round: text(event.league_round),
+    localteam: [{
+      id: text(event.home_team_key),
+      name: homeTeam,
+      crest: text(event.event_home_team_logo),
+    }],
+    visitorteam: [{
+      id: text(event.away_team_key),
+      name: awayTeam,
+      crest: text(event.event_away_team_logo),
+    }],
+    status,
+    live,
+    recent: false,
+    starting_at: dateTime,
+    result_info: text(event.event_status_info) || status,
+    runs: scoreLines,
+    scoreboards: [],
+    venue: { name: text(event.event_stadium) },
+  }
+}
+
+function cricketDataFailureDescription(status: number | null, providerReason: string, networkError: string) {
+  const reason = providerReason.toLowerCase()
+  if (networkError) return networkError === 'TimeoutError'
+    ? 'the request timed out'
+    : 'the provider could not be reached from Supabase'
+  if (status === 401 || status === 403 || /invalid.*key|api.?key.*(invalid|required)|unauthori[sz]ed|access denied/.test(reason)) {
+    return 'the API key was rejected or does not have access'
+  }
+  if (status === 429 || /quota|rate.?limit|daily.*limit|too many requests|hits.*exceed/.test(reason)) {
+    return 'the provider request limit was reached'
+  }
+  if (status !== null && status >= 500) return 'the provider service returned a server error'
+  if (providerReason) return 'the provider rejected the request'
+  if (status !== null) return `the provider returned HTTP ${status}`
+  return 'the provider returned an unexpected response'
 }
 
 function normalizeFootballDataMatch(match: JsonRecord): JsonRecord {
@@ -308,6 +374,7 @@ async function fetchApiFootballEvents(
 const cachedScores: Partial<Record<'cricket' | 'football', { expiresAt: number; fixtures: JsonRecord[] }>> = {}
 const cachedFootballMatchDetails = new Map<number, { expiresAt: number; details: JsonRecord }>()
 const cachedFootballMatchSections = new Map<string, { expiresAt: number; data: JsonRecord }>()
+const cachedCricketMatchDetails = new Map<string, { expiresAt: number; details: JsonRecord }>()
 
 Deno.serve(async (request) => {
   const cors = corsForScoreRequest(request)
@@ -315,14 +382,14 @@ Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors.headers })
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, cors.headers, 405)
 
-  const projectUrl = Deno.env.get('SUPABASE_URL')
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
   const cricketDataToken = Deno.env.get('CRICKETDATA_API_KEY')
+  const apiCricketToken = Deno.env.get('API_CRICKET_KEY')
   const sportmonksToken = Deno.env.get('SPORTMONKS_API_TOKEN')
   const footballDataToken = Deno.env.get('FOOTBALL_DATA_API_TOKEN')
   const apiFootballToken = Deno.env.get('API_FOOTBALL_KEY')
   let sport: 'cricket' | 'football' = 'cricket'
   let matchId: number | null = null
+  let cricketEventKey: string | null = null
   let matchSection: 'details' | 'head2head' | 'standings' = 'details'
   let competitionId: number | null = null
   try {
@@ -333,6 +400,13 @@ Deno.serve(async (request) => {
       return json({ error: 'Choose cricket or football to load scores.' }, cors.headers, 400)
     }
     if (requestedSport === 'football') sport = 'football'
+    if (requestBody.eventKey !== undefined) {
+      if (typeof requestBody.eventKey !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(requestBody.eventKey)) {
+        return json({ error: 'A valid cricket event key is required.' }, cors.headers, 400)
+      }
+      cricketEventKey = requestBody.eventKey
+      if (sport !== 'cricket') return json({ error: 'Cricket event details are only available for cricket.' }, cors.headers, 400)
+    }
     if (requestBody.matchId !== undefined) {
       const parsedMatchId = Number(requestBody.matchId)
       if (!Number.isSafeInteger(parsedMatchId) || parsedMatchId < 1) {
@@ -360,24 +434,107 @@ Deno.serve(async (request) => {
   } catch {
     return json({ error: 'A valid score request is required.' }, cors.headers, 400)
   }
-  const authorization = request.headers.get('Authorization') || ''
-  const accessToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1]
-  if (!projectUrl || !anonKey || (sport === 'cricket' && (!cricketDataToken || !sportmonksToken))
+  const missingCricketConfiguration = cricketEventKey !== null
+    ? !apiCricketToken
+    : !(apiCricketToken || cricketDataToken) || !sportmonksToken
+  if ((sport === 'cricket' && missingCricketConfiguration)
     || (sport === 'football' && !footballDataToken)) {
     console.error(`${sport === 'cricket' ? 'Cricket score providers' : 'football-data.org'} scores are missing Supabase or provider configuration.`)
-    const missingProvider = sport === 'cricket' && !cricketDataToken
-      ? 'CricketData.org'
+    const missingProvider = sport === 'cricket' && cricketEventKey !== null && !apiCricketToken
+      ? 'API-Cricket'
+      : sport === 'cricket' && !(apiCricketToken || cricketDataToken)
+      ? 'API-Cricket or CricketData.org'
       : sport === 'cricket' && !sportmonksToken ? 'Sportmonks'
-        : sport === 'football' && !footballDataToken ? 'football-data.org' : 'Supabase'
+        : 'football-data.org'
     return json({ error: `Live ${sport} scores are not fully configured. Check the ${missingProvider} server secret.` }, cors.headers, 503)
   }
-  if (!accessToken) return json({ error: `Sign in to view live ${sport} scores.` }, cors.headers, 401)
-
-  const authClient = createClient(projectUrl, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-  const { data: authData, error: authError } = await authClient.auth.getUser(accessToken)
-  if (authError || !authData.user) return json({ error: `Sign in to view live ${sport} scores.` }, cors.headers, 401)
+  if (cricketEventKey !== null) {
+    const cachedDetails = cachedCricketMatchDetails.get(cricketEventKey)
+    if (cachedDetails && cachedDetails.expiresAt > Date.now()) {
+      return json({ details: cachedDetails.details }, cors.headers)
+    }
+    try {
+      const detailUrl = new URL('https://apiv2.api-cricket.com/cricket/')
+      detailUrl.searchParams.set('method', 'get_events')
+      detailUrl.searchParams.set('APIkey', apiCricketToken!)
+      detailUrl.searchParams.set('event_key', cricketEventKey)
+      const detailResponse = await fetch(detailUrl, { signal: AbortSignal.timeout(12_000) })
+      if (!detailResponse.ok) {
+        console.error(`API-Cricket match details request failed with HTTP ${detailResponse.status}.`)
+        if (detailResponse.status === 429) {
+          return json({ error: 'API-Cricket request limit reached. Wait before opening match details again.' }, cors.headers, 503)
+        }
+        return json({ error: `API-Cricket could not load this match scorecard (HTTP ${detailResponse.status}).` }, cors.headers, 502)
+      }
+      const payload: unknown = await detailResponse.json()
+      const result = payload && typeof payload === 'object' ? (payload as JsonRecord).result : null
+      const event = Array.isArray(result)
+        ? result.find((item) => item && typeof item === 'object' && providerKey((item as JsonRecord).event_key) === cricketEventKey) as JsonRecord | undefined
+        : null
+      if (!event) {
+        console.error('API-Cricket match details response did not contain the requested event.')
+        return json({ error: 'API-Cricket returned no scorecard for this match.' }, cors.headers, 404)
+      }
+      const mapRows = (value: unknown, fields: string[]) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+        return Object.fromEntries(Object.entries(value as JsonRecord).map(([innings, rows]) => [
+          innings,
+          Array.isArray(rows)
+            ? rows.filter((row): row is JsonRecord => Boolean(row && typeof row === 'object' && !Array.isArray(row)))
+              .map((row) => Object.fromEntries(fields.map((field) => [field, row[field] ?? null])))
+            : [],
+        ]))
+      }
+      const rawScorecard = event.scorecard && typeof event.scorecard === 'object' ? event.scorecard as JsonRecord : {}
+      const rawExtras = event.extra && typeof event.extra === 'object' ? event.extra as JsonRecord : {}
+      const details: JsonRecord = {
+        eventKey: cricketEventKey,
+        homeTeam: text(event.event_home_team),
+        awayTeam: text(event.event_away_team),
+        homeLogo: text(event.event_home_team_logo),
+        awayLogo: text(event.event_away_team_logo),
+        homeScore: text(event.event_home_final_result) || text(event.event_service_home),
+        awayScore: text(event.event_away_final_result) || text(event.event_service_away),
+        status: text(event.event_status),
+        result: text(event.event_status_info),
+        competition: text(event.league_name),
+        round: text(event.league_round),
+        format: text(event.event_type),
+        toss: text(event.event_toss),
+        playerOfMatch: text(event.event_man_of_match),
+        venue: text(event.event_stadium),
+        date: text(event.event_date_start),
+        time: text(event.event_time),
+        scorecard: Object.fromEntries(Object.entries(rawScorecard).map(([innings, rows]) => [
+          innings,
+          Array.isArray(rows)
+            ? rows.filter((row): row is JsonRecord => Boolean(row && typeof row === 'object' && !Array.isArray(row)))
+              .map((row) => Object.fromEntries(['player', 'type', 'status', 'R', 'B', 'Min', '4s', '6s', 'O', 'M', 'W', 'SR', 'ER']
+                .map((field) => [field, row[field] ?? null])))
+            : [],
+        ])),
+        extras: Object.fromEntries(Object.entries(rawExtras).map(([innings, entry]) => {
+          const value = entry && typeof entry === 'object' ? entry as JsonRecord : {}
+          return [innings, { total: value.total ?? null, text: text(value.text), overs: value.total_overs ?? null }]
+        })),
+        wickets: mapRows(event.wickets, ['fall', 'balwer', 'bowler', 'batsman', 'score']),
+        comments: mapRows(event.comments, ['balls', 'overs', 'post']),
+      }
+      const now = Date.now()
+      for (const [key, entry] of cachedCricketMatchDetails) {
+        if (entry.expiresAt <= now) cachedCricketMatchDetails.delete(key)
+      }
+      if (cachedCricketMatchDetails.size >= 100) {
+        const oldestKey = cachedCricketMatchDetails.keys().next().value
+        if (oldestKey !== undefined) cachedCricketMatchDetails.delete(oldestKey)
+      }
+      cachedCricketMatchDetails.set(cricketEventKey, { details, expiresAt: now + 30 * 60_000 })
+      return json({ details }, cors.headers)
+    } catch (detailError) {
+      console.error(`API-Cricket match details request failed before a usable response (${detailError instanceof Error ? detailError.name : 'unknown error'}).`)
+      return json({ error: 'API-Cricket match details are temporarily unavailable. Try again shortly.' }, cors.headers, 502)
+    }
+  }
   if (matchId !== null && matchSection !== 'details') {
     if (matchSection === 'standings' && competitionId === null) {
       return json({ error: 'Competition standings are not available for this match.' }, cors.headers, 400)
@@ -643,8 +800,9 @@ Deno.serve(async (request) => {
     const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
     const from = recentStart.toISOString().slice(0, 10)
     const until = endDate.toISOString().slice(0, 10)
+    const usingApiCricket = sport === 'cricket' && Boolean(apiCricketToken)
     const liveUrl = sport === 'cricket'
-      ? new URL('https://api.cricapi.com/v1/currentMatches')
+      ? new URL(usingApiCricket ? 'https://apiv2.api-cricket.com/cricket/' : 'https://api.cricapi.com/v1/currentMatches')
       : new URL('https://api.football-data.org/v4/matches')
     const fixturesUrl = sport === 'cricket'
       ? new URL('https://cricket.sportmonks.com/api/v2.0/fixtures')
@@ -658,8 +816,15 @@ Deno.serve(async (request) => {
         return url
       })
     if (sport === 'cricket') {
-      liveUrl.searchParams.set('apikey', cricketDataToken!)
-      liveUrl.searchParams.set('offset', '0')
+      if (usingApiCricket) {
+        liveUrl.searchParams.set('method', 'get_events')
+        liveUrl.searchParams.set('APIkey', apiCricketToken!)
+        liveUrl.searchParams.set('date_start', from)
+        liveUrl.searchParams.set('date_stop', until)
+      } else {
+        liveUrl.searchParams.set('apikey', cricketDataToken!)
+        liveUrl.searchParams.set('offset', '0')
+      }
       fixturesUrl.searchParams.set('api_token', sportmonksToken!)
       fixturesUrl.searchParams.set('include', 'localteam,visitorteam,league,runs,scoreboards,venue')
       fixturesUrl.searchParams.set('filter[starts_between]', `${from},${until}`)
@@ -669,19 +834,23 @@ Deno.serve(async (request) => {
       headers: sport === 'football' ? { 'X-Auth-Token': footballDataToken! } : undefined,
       signal: AbortSignal.timeout(12_000),
     })
-      .then((response) => ({ response, error: null }))
+      .then((response) => ({ response, error: null, errorName: '' }))
       .catch((requestError) => {
         if (sport === 'football') {
           const reason = requestError instanceof Error ? requestError.name : 'unknown error'
           console.error(`football-data.org date window ${index + 1} failed before receiving a response (${reason}).`)
         }
-        return { response: null, error: true }
+        return {
+          response: null,
+          error: true,
+          errorName: requestError instanceof Error ? requestError.name : 'unknown error',
+        }
       })))
     const fixtureRequest = sport === 'cricket'
       ? fetch(fixturesUrl, { signal: AbortSignal.timeout(12_000) })
-        .then((response) => ({ response, error: null }))
-        .catch(() => ({ response: null, error: true }))
-      : Promise.resolve({ response: null, error: null })
+        .then((response) => ({ response, error: null, errorName: '' }))
+        .catch(() => ({ response: null, error: true, errorName: '' }))
+      : Promise.resolve({ response: null, error: null, errorName: '' })
     const [liveResults, fixtureResult] = await Promise.all([liveRequest, fixtureRequest])
 
     const footballSuccessfulResults = sport === 'football'
@@ -693,9 +862,26 @@ Deno.serve(async (request) => {
       : liveResults[0]
     let liveResponse = liveResult.response
     let usingSportmonksLiveFallback = false
+    let cricketDataFailure = ''
     if (sport === 'cricket' && (!liveResponse || !liveResponse.ok)) {
       const cricketDataStatus = liveResponse?.status
-      console.error(`CricketData.org current-match request failed${cricketDataStatus ? ` with HTTP ${cricketDataStatus}` : ' before receiving a response'}.`)
+      let providerReason = ''
+      if (liveResponse) {
+        try {
+          const errorPayload: unknown = await liveResponse.clone().json()
+          if (errorPayload && typeof errorPayload === 'object') {
+            providerReason = text((errorPayload as JsonRecord).reason)
+          }
+        } catch {
+          providerReason = ''
+        }
+      }
+      cricketDataFailure = cricketDataFailureDescription(
+        cricketDataStatus ?? null,
+        providerReason,
+        liveResult.errorName,
+      )
+      console.error(`${usingApiCricket ? 'API-Cricket' : 'CricketData.org'} cricket request failed: ${cricketDataFailure}.`)
       const fallbackUrl = new URL('https://cricket.sportmonks.com/api/v2.0/livescores')
       fallbackUrl.searchParams.set('api_token', sportmonksToken!)
       fallbackUrl.searchParams.set('include', 'localteam,visitorteam,league,runs,scoreboards,venue')
@@ -712,7 +898,9 @@ Deno.serve(async (request) => {
       }
     }
     if (!liveResponse || !liveResponse.ok) {
-      const provider = sport === 'cricket' ? 'CricketData.org and Sportmonks' : 'football-data.org'
+      const provider = sport === 'cricket'
+        ? `${usingApiCricket ? 'API-Cricket' : 'CricketData.org'} and Sportmonks`
+        : 'football-data.org'
       const status = liveResponse?.status || liveResult.response?.status
       if (sport === 'football') {
         console.error(`football-data.org matches request failed${status ? ` with HTTP ${status}` : ' before receiving a response'}.`)
@@ -761,11 +949,13 @@ Deno.serve(async (request) => {
       }
     } catch {
       if (sport !== 'cricket' || usingSportmonksLiveFallback) {
-        const provider = usingSportmonksLiveFallback ? 'Sportmonks' : sport === 'cricket' ? 'CricketData.org' : 'football-data.org'
+        const provider = usingSportmonksLiveFallback
+          ? 'Sportmonks'
+          : sport === 'cricket' ? usingApiCricket ? 'API-Cricket' : 'CricketData.org' : 'football-data.org'
         console.error(`${provider} ${sport} current-match response was not valid JSON.`)
         return json({ error: `${provider} returned an unreadable ${sport} current-match response.` }, cors.headers, 502)
       }
-      console.error('CricketData.org current-match response was not valid JSON; trying Sportmonks fallback.')
+      console.error(`${usingApiCricket ? 'API-Cricket' : 'CricketData.org'} response was not valid JSON; trying Sportmonks fallback.`)
       const fallbackUrl = new URL('https://cricket.sportmonks.com/api/v2.0/livescores')
       fallbackUrl.searchParams.set('api_token', sportmonksToken!)
       fallbackUrl.searchParams.set('include', 'localteam,visitorteam,league,runs,scoreboards,venue')
@@ -773,19 +963,24 @@ Deno.serve(async (request) => {
         const fallbackResponse = await fetch(fallbackUrl, { signal: AbortSignal.timeout(12_000) })
         if (!fallbackResponse.ok) {
           console.error(`Sportmonks cricket live fallback failed with HTTP ${fallbackResponse.status}.`)
-          return json({ error: 'CricketData.org response was unreadable and Sportmonks could not provide cricket live scores.' }, cors.headers, 502)
+          return json({ error: `${usingApiCricket ? 'API-Cricket' : 'CricketData.org'} response was unreadable and Sportmonks could not provide cricket live scores.` }, cors.headers, 502)
         }
         livePayload = await fallbackResponse.json()
         usingSportmonksLiveFallback = true
       } catch {
         console.error('Sportmonks cricket live fallback failed before receiving a response.')
-        return json({ error: 'CricketData.org response was unreadable and Sportmonks could not provide cricket live scores.' }, cors.headers, 502)
+        return json({ error: `${usingApiCricket ? 'API-Cricket' : 'CricketData.org'} response was unreadable and Sportmonks could not provide cricket live scores.` }, cors.headers, 502)
       }
     }
     if (sport === 'cricket' && livePayload && typeof livePayload === 'object'
-      && (livePayload as JsonRecord).status === 'failure' && !usingSportmonksLiveFallback) {
+      && (((livePayload as JsonRecord).status === 'failure')
+        || ((livePayload as JsonRecord).success !== undefined && Number((livePayload as JsonRecord).success) !== 1))
+      && !usingSportmonksLiveFallback) {
       const reason = text((livePayload as JsonRecord).reason)
-      console.error(`CricketData.org rejected the current matches request: ${reason || 'unknown provider error'}.`)
+        || text((livePayload as JsonRecord).message)
+        || text((livePayload as JsonRecord).error)
+      cricketDataFailure = cricketDataFailureDescription(null, reason, '')
+      console.error(`${usingApiCricket ? 'API-Cricket' : 'CricketData.org'} cricket request failed: ${cricketDataFailure}.`)
       const fallbackUrl = new URL('https://cricket.sportmonks.com/api/v2.0/livescores')
       fallbackUrl.searchParams.set('api_token', sportmonksToken!)
       fallbackUrl.searchParams.set('include', 'localteam,visitorteam,league,runs,scoreboards,venue')
@@ -793,18 +988,39 @@ Deno.serve(async (request) => {
         const fallbackResponse = await fetch(fallbackUrl, { signal: AbortSignal.timeout(12_000) })
         if (!fallbackResponse.ok) {
           console.error(`Sportmonks cricket live fallback failed with HTTP ${fallbackResponse.status}.`)
-          return json({ error: 'CricketData.org rejected the current-match request and Sportmonks could not provide cricket live scores. Check the CricketData key and provider access.' }, cors.headers, 502)
+          return json({ error: `${usingApiCricket ? 'API-Cricket' : 'CricketData.org'} rejected the request and Sportmonks could not provide cricket live scores. Check the API key and provider access.` }, cors.headers, 502)
         }
         livePayload = await fallbackResponse.json()
         usingSportmonksLiveFallback = true
       } catch {
         console.error('Sportmonks cricket live fallback failed before receiving a response.')
-        return json({ error: 'CricketData.org rejected the current-match request and Sportmonks could not provide cricket live scores. Check the CricketData key and provider access.' }, cors.headers, 502)
+        return json({ error: `${usingApiCricket ? 'API-Cricket' : 'CricketData.org'} rejected the request and Sportmonks could not provide cricket live scores. Check the API key and provider access.` }, cors.headers, 502)
+      }
+    }
+    if (sport === 'cricket' && usingApiCricket && !usingSportmonksLiveFallback
+      && (!livePayload || typeof livePayload !== 'object' || !Array.isArray((livePayload as JsonRecord).result))) {
+      console.error('API-Cricket get_events response did not contain a result array; trying Sportmonks live-score fallback.')
+      const fallbackUrl = new URL('https://cricket.sportmonks.com/api/v2.0/livescores')
+      fallbackUrl.searchParams.set('api_token', sportmonksToken!)
+      fallbackUrl.searchParams.set('include', 'localteam,visitorteam,league,runs,scoreboards,venue')
+      try {
+        const fallbackResponse = await fetch(fallbackUrl, { signal: AbortSignal.timeout(12_000) })
+        if (!fallbackResponse.ok) {
+          console.error(`Sportmonks cricket live fallback failed with HTTP ${fallbackResponse.status}.`)
+          return json({ error: 'API-Cricket returned an invalid response and Sportmonks could not provide cricket live scores.' }, cors.headers, 502)
+        }
+        livePayload = await fallbackResponse.json()
+        usingSportmonksLiveFallback = true
+      } catch {
+        console.error('Sportmonks cricket live fallback failed before receiving a response.')
+        return json({ error: 'API-Cricket returned an invalid response and Sportmonks could not provide cricket live scores.' }, cors.headers, 502)
       }
     }
     if (sport === 'football') fixturesPayload = livePayload
     const liveData = livePayload && typeof livePayload === 'object'
-      ? (livePayload as JsonRecord)[sport === 'cricket' ? 'data' : 'matches']
+      ? (livePayload as JsonRecord)[sport === 'football'
+        ? 'matches'
+        : usingApiCricket ? 'result' : 'data']
       : null
     const footballMatches = sport === 'football' && Array.isArray(liveData)
       ? liveData.map((match) => normalizeFootballDataMatch(match as JsonRecord))
@@ -812,7 +1028,9 @@ Deno.serve(async (request) => {
     const upcomingData = sport === 'football'
       ? footballMatches
       : fixturesPayload && typeof fixturesPayload === 'object' ? (fixturesPayload as JsonRecord).data : []
-    const liveMatches = sport === 'cricket' && !usingSportmonksLiveFallback && Array.isArray(liveData)
+    const liveMatches = sport === 'cricket' && usingApiCricket && !usingSportmonksLiveFallback && Array.isArray(liveData)
+      ? liveData.map((event) => normalizeApiCricketEvent(event as JsonRecord))
+      : sport === 'cricket' && !usingSportmonksLiveFallback && Array.isArray(liveData)
       ? liveData.map((matchValue) => {
         const match = matchValue as JsonRecord
         const teamInfo = Array.isArray(match.teamInfo) ? match.teamInfo as JsonRecord[] : []
@@ -886,7 +1104,7 @@ Deno.serve(async (request) => {
         normalizedFixtures.set(String(fixture.id), fixture)
         continue
       }
-      if (sport !== 'cricket' || !isNepalPremierLeague(fixture.league)) continue
+      if (sport !== 'cricket' || (!usingApiCricket && !isNepalPremierLeague(fixture.league))) continue
       const start = fixtureDate(fixture.starting_at)
       if (!start) continue
       const startTime = start.getTime()
@@ -938,6 +1156,7 @@ Deno.serve(async (request) => {
         })
       return {
         id: fixture.id,
+        eventKey: typeof fixture.eventKey === 'string' ? fixture.eventKey : undefined,
         sport,
         league: text(firstRelation(fixture.league).name),
         round: text(fixture.round) || text(firstRelation(fixture.round).name),
@@ -965,7 +1184,7 @@ Deno.serve(async (request) => {
     return json({
       fixtures,
       warning: usingSportmonksLiveFallback
-        ? 'CricketData.org is temporarily unreachable or rejected its request; current cricket matches are being shown from Sportmonks instead. Nepal Premier League matches will appear when CricketData.org is available again.'
+        ? `${usingApiCricket ? 'API-Cricket' : 'CricketData.org'} failed because ${cricketDataFailure || 'the request failed'}; current cricket matches are being shown from Sportmonks instead.`
         : sport === 'football' && footballPartial
           ? 'football-data.org temporarily failed to return some date ranges; showing matches from the ranges that loaded.'
           : fixturesUnavailable ? `Sportmonks ${sport} fixtures are temporarily unavailable; showing current ${sport} matches only.` : undefined,

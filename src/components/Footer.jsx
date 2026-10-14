@@ -27,7 +27,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="footer-bottom page-container">
-        <span>© 2026 PlayLink · Phase 1 demo</span>
+        <span>© 2026 PlayLink</span>
         <span>Built for the people who play.</span>
       </div>
     </footer>

@@ -11,14 +11,18 @@ import { getVenueImage } from '../data/venueImages.js'
 import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
 
 function publicVenue(venue) {
+  const hasCoordinates = venue.latitude !== null && venue.latitude !== undefined && venue.latitude !== ''
+    && venue.longitude !== null && venue.longitude !== undefined && venue.longitude !== ''
+  const latitude = hasCoordinates ? Number(venue.latitude) : NaN
+  const longitude = hasCoordinates ? Number(venue.longitude) : NaN
   return {
     ...venue,
     isOwnerListing: true,
     image: getVenueImage(venue),
     price: `NPR ${Number(venue.price_per_hour || 0).toLocaleString('en-IN')}`,
     rating: Number(venue.rating) || 0,
-    coordinates: Number.isFinite(Number(venue.latitude)) && Number.isFinite(Number(venue.longitude))
-      ? [Number(venue.longitude), Number(venue.latitude)]
+    coordinates: Number.isFinite(latitude) && Number.isFinite(longitude)
+      ? [longitude, latitude]
       : null,
     slots: [],
   }

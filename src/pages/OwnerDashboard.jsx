@@ -217,6 +217,14 @@ function OwnerDashboard() {
 
   async function saveVenue(form, venueId, photoFile) {
     clearFeedback()
+    const latitude = Number(form.latitude)
+    const longitude = Number(form.longitude)
+    if (form.latitude === '' || form.longitude === ''
+      || !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+      || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      setActionError('Venue latitude and longitude are required and must be valid coordinates.')
+      return null
+    }
     const savedVenueId = venueId || crypto.randomUUID()
     const venueData = {
       name: form.name.trim(),
@@ -227,8 +235,8 @@ function OwnerDashboard() {
       price_per_hour: Number(form.price_per_hour),
       image_url: form.image_url?.trim() || '',
       maps_url: form.maps_url.trim(),
-      latitude: form.latitude === '' ? null : Number(form.latitude),
-      longitude: form.longitude === '' ? null : Number(form.longitude),
+      latitude,
+      longitude,
       is_active: form.is_active,
     }
     try {
@@ -550,7 +558,7 @@ function VenuePage({ venues, onSave, onToggleActive }) {
     {venues.length > 1 && <label className="owner-venue-select">Choose venue<select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>{venues.map((venue) => <option value={venue.id} key={venue.id}>{venue.name}</option>)}</select></label>}
     <form className="owner-panel owner-venue-form" onSubmit={async (event) => { event.preventDefault(); const saved = await onSave(form, selectedId || undefined, photoFile); if (saved?.id) setSelectedId(saved.id) }}>
       <div className="owner-venue-form-top"><div><span className="owner-form-kicker">VENUE PROFILE</span><h2>{selectedVenue ? 'Update venue details' : 'Add your venue'}</h2><p>This information belongs to your venue owner account.</p></div>{selectedVenue && <span className={`owner-listing-state ${selectedVenue.is_active ? 'active' : 'paused'}`}><i />{selectedVenue.is_active ? 'Listing active' : 'Listing paused'}</span>}</div>
-      <div className="owner-form-grid"><label>Venue name<input value={form.name} onChange={changeVenueName} required minLength="2" maxLength="120" placeholder="Your venue’s name" /></label><label>Sport<select value={form.sport} onChange={change('sport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select></label><label>District / area<input value={form.area} onChange={change('area')} required minLength="2" maxLength="160" placeholder="Kathmandu, Lalitpur, or Bhaktapur" /></label><label>Street address<input value={form.address} onChange={change('address')} maxLength="240" placeholder="Full address" /></label><label>Hourly rate (Rs)<input type="number" min="0" step="50" value={form.price_per_hour} onChange={change('price_per_hour')} required /></label><label>Latitude <span>(optional)</span><input type="number" min="-90" max="90" step="any" value={form.latitude} onChange={change('latitude')} placeholder="27.7152" /></label><label>Longitude <span>(optional)</span><input type="number" min="-180" max="180" step="any" value={form.longitude} onChange={change('longitude')} placeholder="85.3128" /></label><label className="owner-form-span">Google Maps link<input type="url" value={form.maps_url} onChange={change('maps_url')} placeholder="https://www.google.com/maps/search/..." /></label><div className="owner-form-span"><VenuePhotoPicker id="owner-venue-photo" file={photoFile} currentUrl={form.image_url} onChange={setPhotoFile} /></div><label className="owner-form-span">About this venue<textarea className="fixed-scroll-textarea" rows="4" maxLength="1000" value={form.description} onChange={change('description')} placeholder="Tell players about your facilities, surface, changing rooms, or lights." /></label></div>{sportsError && <p className="owner-form-hint" role="alert">{sportsError}</p>}
+      <div className="owner-form-grid"><label>Venue name<input value={form.name} onChange={changeVenueName} required minLength="2" maxLength="120" placeholder="Your venue’s name" /></label><label>Sport<select value={form.sport} onChange={change('sport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select></label><label>District / area<input value={form.area} onChange={change('area')} required minLength="2" maxLength="160" placeholder="Kathmandu, Lalitpur, or Bhaktapur" /></label><label>Street address<input value={form.address} onChange={change('address')} maxLength="240" placeholder="Full address" /></label><label>Hourly rate (Rs)<input type="number" min="0" step="50" value={form.price_per_hour} onChange={change('price_per_hour')} required /></label><label>Venue latitude<input type="number" min="-90" max="90" step="any" value={form.latitude} onChange={change('latitude')} placeholder="27.7152" required /></label><label>Venue longitude<input type="number" min="-180" max="180" step="any" value={form.longitude} onChange={change('longitude')} placeholder="85.3128" required /></label><label className="owner-form-span">Google Maps link<input type="url" value={form.maps_url} onChange={change('maps_url')} placeholder="https://www.google.com/maps/search/..." /></label><div className="owner-form-span"><VenuePhotoPicker id="owner-venue-photo" file={photoFile} currentUrl={form.image_url} onChange={setPhotoFile} /></div><label className="owner-form-span">About this venue<textarea className="fixed-scroll-textarea" rows="4" maxLength="1000" value={form.description} onChange={change('description')} placeholder="Tell players about your facilities, surface, changing rooms, or lights." /></label></div>{sportsError && <p className="owner-form-hint" role="alert">{sportsError}</p>}
       {form.maps_url && <a className="owner-maps-preview" href={form.maps_url} target="_blank" rel="noreferrer"><Icon name="pin" size={14} />Preview venue location in Google Maps <Icon name="arrow-right" size={13} /></a>}
       <label className="owner-listing-toggle"><input type="checkbox" checked={Boolean(form.is_active)} onChange={change('is_active')} /><span><b>Show this venue to players</b><small>Pause the public listing without deleting your bookings or schedule.</small></span></label>
       <div className="owner-form-actions"><button className="owner-primary-button" type="submit"><Icon name="check" size={15} /> {selectedVenue ? 'Save changes' : 'Create venue'}</button>{selectedVenue && <button className="owner-outline-button" type="button" onClick={() => onToggleActive(selectedVenue)}>{selectedVenue.is_active ? 'Pause listing' : 'Activate listing'}</button>}</div>

@@ -289,12 +289,17 @@ export default function AdminDashboard() {
         password: String(fields.get('password') || ''),
         account_type: accountType,
         phone: String(fields.get('phone') || ''),
+        home_location: String(fields.get('home_location') || ''),
+        home_latitude: String(fields.get('home_latitude') || ''),
+        home_longitude: String(fields.get('home_longitude') || ''),
       }
       if (accountType === 'venue_owner') {
         body.venue = {
           name: String(fields.get('venue_name') || ''),
           area: String(fields.get('venue_area') || ''),
           sport: String(fields.get('venue_sport') || ''),
+          latitude: String(fields.get('venue_latitude') || ''),
+          longitude: String(fields.get('venue_longitude') || ''),
         }
       }
       const { data: result, error: createError } = await supabase.functions.invoke('admin-create-playlink-account', { body })
@@ -329,13 +334,13 @@ export default function AdminDashboard() {
     try {
       const latitudeValue = String(fields.get('latitude') || '').trim()
       const longitudeValue = String(fields.get('longitude') || '').trim()
-      if (Boolean(latitudeValue) !== Boolean(longitudeValue)) {
-        throw new Error('Enter both latitude and longitude, or leave both blank.')
+      if (!latitudeValue || !longitudeValue) {
+        throw new Error('Venue latitude and longitude are required.')
       }
-      const latitude = latitudeValue ? Number(latitudeValue) : null
-      const longitude = longitudeValue ? Number(longitudeValue) : null
-      if ((latitude !== null && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90))
-        || (longitude !== null && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180))) {
+      const latitude = Number(latitudeValue)
+      const longitude = Number(longitudeValue)
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+        || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
         throw new Error('Enter valid coordinates: latitude from -90 to 90 and longitude from -180 to 180.')
       }
       if (newVenuePhoto) validateVenuePhoto(newVenuePhoto)
@@ -463,10 +468,15 @@ export default function AdminDashboard() {
                 <label>Phone <span>(optional)</span><input name="phone" maxLength="40" /></label>
                 <label>Account type<select name="account_type" value={newAccountType} onChange={(event) => setNewAccountType(event.target.value)}><option value="player">Player</option><option value="venue_owner">Venue owner</option></select></label>
                 <label>Temporary password<input name="password" type="password" minLength="8" maxLength="256" autoComplete="new-password" required /></label>
+                <label>Home area<input name="home_location" minLength="2" maxLength="160" placeholder="City or district" required /></label>
+                <label>Home latitude<input name="home_latitude" type="number" min="-90" max="90" step="any" required /></label>
+                <label>Home longitude<input name="home_longitude" type="number" min="-180" max="180" step="any" required /></label>
                 {newAccountType === 'venue_owner' && <>
                   <label>First venue name<input name="venue_name" minLength="2" maxLength="120" required /></label>
                   <label>First venue area<input name="venue_area" minLength="2" maxLength="160" required /></label>
                   <label>First venue sport<select name="venue_sport" required><option value="">Choose sport</option>{sportOptions.map((item) => <option key={item.slug} value={item.name}>{item.name}</option>)}<option value="Both">Both</option></select></label>
+                  <label>First venue latitude<input name="venue_latitude" type="number" min="-90" max="90" step="any" required /></label>
+                  <label>First venue longitude<input name="venue_longitude" type="number" min="-180" max="180" step="any" required /></label>
                 </>}
               </div>
               <button className="button button-primary" type="submit" disabled={creatingAccount}>{creatingAccount ? 'Creating account…' : 'Create account'}</button>
@@ -481,8 +491,8 @@ export default function AdminDashboard() {
                 <label>Area<input name="area" minLength="2" maxLength="160" required /></label>
                 <label>Address<input name="address" maxLength="240" /></label>
                 <label>Hourly rate (NPR)<input name="price_per_hour" type="number" min="0" max="99999999" step="50" defaultValue="2500" required /></label>
-                <label>Latitude <span>(optional)</span><input name="latitude" type="number" min="-90" max="90" step="any" placeholder="27.7152" /></label>
-                <label>Longitude <span>(optional)</span><input name="longitude" type="number" min="-180" max="180" step="any" placeholder="85.3128" /></label>
+                <label>Venue latitude<input name="latitude" type="number" min="-90" max="90" step="any" placeholder="27.7152" required /></label>
+                <label>Venue longitude<input name="longitude" type="number" min="-180" max="180" step="any" placeholder="85.3128" required /></label>
                 <label className="admin-create-wide">Google Maps link<input name="maps_url" type="url" placeholder="https://www.google.com/maps/search/..." /></label>
                 <div className="admin-create-wide"><VenuePhotoPicker id="admin-venue-photo" file={newVenuePhoto} currentUrl="" onChange={setNewVenuePhoto} /></div>
                 <label className="admin-create-wide">About this venue<textarea name="description" maxLength="1000" rows="4" placeholder="Tell players about the facilities, surface, changing rooms, or lights." /></label>

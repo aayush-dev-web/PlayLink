@@ -16,6 +16,12 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function parseCoordinate(value: unknown, minimum: number, maximum: number): number | null {
+  if ((typeof value !== 'string' && typeof value !== 'number') || String(value).trim() === '') return null
+  const coordinate = Number(value)
+  return Number.isFinite(coordinate) && coordinate >= minimum && coordinate <= maximum ? coordinate : null
+}
+
 Deno.serve(async (request) => {
   const cors = corsForRequest(request)
   if (!cors.allowed) return json({ error: 'Origin is not allowed.' }, cors.headers, 403)
@@ -70,6 +76,10 @@ Deno.serve(async (request) => {
   const password = typeof body.password === 'string' ? body.password : ''
   const accountType = body.account_type
   const phone = typeof body.phone === 'string' ? body.phone.trim().slice(0, 40) : ''
+  const homeLocation = typeof body.home_location === 'string' ? body.home_location.trim() : ''
+  const homeLatitude = parseCoordinate(body.home_latitude, -90, 90)
+  const homeLongitude = parseCoordinate(body.home_longitude, -180, 180)
+  const venueInput = isJsonObject(body.venue) ? body.venue : {}
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
     return json({ error: 'Enter a valid email address.' }, cors.headers, 400)
@@ -85,6 +95,9 @@ Deno.serve(async (request) => {
   }
   if (!isAccountType(accountType)) {
     return json({ error: 'Choose a valid account type.' }, cors.headers, 400)
+  }
+  if (homeLocation.length < 2 || homeLocation.length > 160 || homeLatitude === null || homeLongitude === null) {
+    return json({ error: 'Enter the account holder’s home area and valid latitude and longitude.' }, cors.headers, 400)
   }
 
   const { data: existingUsername, error: usernameCheckError } = await admin
@@ -103,14 +116,22 @@ Deno.serve(async (request) => {
     full_name: displayName,
     phone,
     account_type: accountType,
+    home_location: homeLocation,
+    home_latitude: homeLatitude,
+    home_longitude: homeLongitude,
   }
 
   if (accountType === 'venue_owner') {
-    const name = typeof body.venue?.name === 'string' ? body.venue.name.trim() : ''
-    const area = typeof body.venue?.area === 'string' ? body.venue.area.trim() : ''
-    const sport = typeof body.venue?.sport === 'string' ? body.venue.sport.trim() : ''
+    const name = typeof venueInput.name === 'string' ? venueInput.name.trim() : ''
+    const area = typeof venueInput.area === 'string' ? venueInput.area.trim() : ''
+    const sport = typeof venueInput.sport === 'string' ? venueInput.sport.trim() : ''
+    const latitude = parseCoordinate(venueInput.latitude, -90, 90)
+    const longitude = parseCoordinate(venueInput.longitude, -180, 180)
     if (name.length < 2 || name.length > 120 || area.length < 2 || area.length > 160) {
       return json({ error: 'Venue owners need an initial venue name and area.' }, cors.headers, 400)
+    }
+    if (latitude === null || longitude === null) {
+      return json({ error: 'Venue owners need valid initial venue latitude and longitude.' }, cors.headers, 400)
     }
     if (sport !== 'Both') {
       const { data: validSport, error: sportError } = await admin
@@ -124,13 +145,14 @@ Deno.serve(async (request) => {
       }
       if (!validSport) return json({ error: 'Choose a sport from the PlayLink sports list.' }, cors.headers, 400)
     }
-    userMetadata = { ...userMetadata, owner_venue: { name, area, sport } }
+    userMetadata = { ...userMetadata, owner_venue: { name, area, sport, latitude, longitude } }
   }
 
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
+    app_metadata: { playlink_managed_creation: true },
     user_metadata: userMetadata,
   })
   if (createError || !created.user) {

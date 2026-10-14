@@ -65,12 +65,18 @@ export default function NearbyVenues() {
         const { data, error } = await supabase.from('owner_venues').select('id, name, sport, area, address, price_per_hour, latitude, longitude, image_url, maps_url')
           .eq('is_active', true).order('created_at', { ascending: false })
         if (error) throw error
-        if (active) setVenues((data || []).map((venue) => ({
-          ...venue,
-          coordinates: Number.isFinite(Number(venue.latitude)) && Number.isFinite(Number(venue.longitude))
-            ? [Number(venue.longitude), Number(venue.latitude)]
-            : null,
-        })))
+        if (active) setVenues((data || []).map((venue) => {
+          const hasCoordinates = venue.latitude !== null && venue.latitude !== undefined && venue.latitude !== ''
+            && venue.longitude !== null && venue.longitude !== undefined && venue.longitude !== ''
+          const latitude = hasCoordinates ? Number(venue.latitude) : NaN
+          const longitude = hasCoordinates ? Number(venue.longitude) : NaN
+          return {
+            ...venue,
+            coordinates: Number.isFinite(latitude) && Number.isFinite(longitude)
+              ? [longitude, latitude]
+              : null,
+          }
+        }))
       } catch (error) {
         if (active) setLoadError(error instanceof Error ? error.message : 'Active venue listings could not be loaded.')
       } finally {
@@ -176,10 +182,10 @@ export default function NearbyVenues() {
           <aside className="nearby-map-column">
             <section className="nearby-map-panel">
               <div className="nearby-map-heading"><span><Icon name="map" size={19} /></span><div><b>PlayLink Map</b><small>{selectedVenue?.name || 'Venue area'}</small></div></div>
-              {selectedVenue ? <InlineDirectionsMap key={selectedVenue.id} className="nearby-inline-map" venues={nearby} selectedVenue={selectedVenue} origin={userLocation} onSelect={(venue) => setSelectedId(venue.id)} /> : <div className="nearby-empty">Select a place to show it on the map.</div>}
-              <p>{selectedVenue?.isSuggested ? 'Suggested location; confirm the venue is open before visiting. Driving directions are shown on this page.' : 'Venue and location details are provided by the owner. Your location is sent to OpenStreetMap routing only to calculate an on-page route.'}</p>
+              {selectedVenue ? <InlineDirectionsMap key={selectedVenue.id} className="nearby-inline-map" selectedVenue={selectedVenue} origin={userLocation} /> : <div className="nearby-empty">Select a place to show it on the map.</div>}
+              <p>{selectedVenue?.isSuggested ? 'Suggested location; confirm the venue is open before visiting. Driving directions are shown in Google Maps.' : 'Venue and location details are provided by the owner. Google Maps receives your location only when you request directions.'}</p>
             </section>
-            {selectedVenue && <section className="nearby-directions-panel"><span className="eyebrow">{selectedVenue.isSuggested ? 'SUGGESTED PLACE' : 'SELECTED DESTINATION'}</span><h2>{selectedVenue.name}</h2><p>{selectedVenue.area} · {selectedVenue.sport}</p><p>{userLocation ? 'The driving route and route details are displayed in the map above.' : 'Use your location to calculate a route displayed directly on this page.'}</p>{!userLocation && <button className="button button-primary nearby-open-directions" type="button" onClick={useMyLocation} disabled={locating}><Icon name="compass" size={15} />{locating ? 'Finding your location…' : 'Show directions on this page'}</button>}</section>}
+            {selectedVenue && <section className="nearby-directions-panel"><span className="eyebrow">{selectedVenue.isSuggested ? 'SUGGESTED PLACE' : 'SELECTED DESTINATION'}</span><h2>{selectedVenue.name}</h2><p>{selectedVenue.area} · {selectedVenue.sport}</p><p>{userLocation ? 'Google Maps is showing your driving route above.' : 'Use your location to see a route in Google Maps.'}</p>{!userLocation && <button className="button button-primary nearby-open-directions" type="button" onClick={useMyLocation} disabled={locating}><Icon name="compass" size={15} />{locating ? 'Finding your location…' : 'Show directions on this page'}</button>}</section>}
           </aside>
         </div>
       </div>

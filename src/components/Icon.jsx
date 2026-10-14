@@ -43,6 +43,7 @@ const iconContent = {
   'chevron-left': <path d="m15 18-6-6 6-6" />,
   'chevron-right': <path d="m9 18 6-6-6-6" />,
   close: <><path d="m18 6-12 12M6 6l12 12" /></>,
+  logout: <><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" /></>,
   'arrow-right': <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
   lightning: <path d="m13 2-3 8h7l-6 12 2-9H6l7-11Z" />,
   heart: <><path d="M20.8 8.8c0 5.1-8.8 10.1-8.8 10.1S3.2 13.9 3.2 8.8a4.5 4.5 0 0 1 8.8-1.3 4.5 4.5 0 0 1 8.8 1.3Z" /></>,

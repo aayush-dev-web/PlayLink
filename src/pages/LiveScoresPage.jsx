@@ -4,7 +4,7 @@ import Icon from '../components/Icon.jsx'
 import Brand from '../components/Brand.jsx'
 import TeamCrest from '../components/TeamCrest.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
-import useSportmonksCricketScores, { fetchFootballMatchDetails, fetchFootballMatchSection, gameInnings, teamName } from '../hooks/useSportmonksCricketScores.js'
+import useSportmonksCricketScores, { fetchCricketMatchDetails, fetchFootballMatchDetails, fetchFootballMatchSection, gameInnings, teamName } from '../hooks/useSportmonksCricketScores.js'
 
 const dayFormatter = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
 const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -15,15 +15,21 @@ function dateValue(value) {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-function MatchCard({ game }) {
+function MatchCard({ game, onOpen }) {
   const home = teamName(game.localteam) || 'Home'
   const away = teamName(game.visitorteam) || 'Away'
   const innings = gameInnings(game)
   const sportIcon = game.sport === 'football' ? 'football' : 'cricket'
   const start = dateValue(game.starting_at)
   const venue = game.venue?.name || game.venue?.city || ''
+  const Card = game.sport === 'football' || Boolean(game.eventKey) ? 'button' : 'article'
   return (
-    <article className="scores-match-card">
+    <Card
+      className={`scores-match-card${Card === 'button' ? ' is-clickable' : ''}`}
+      type={Card === 'button' ? 'button' : undefined}
+      onClick={Card === 'button' ? () => onOpen(game) : undefined}
+      aria-label={Card === 'button' ? `View details for ${home} versus ${away}` : undefined}
+    >
       <header>
         <span><Icon name={sportIcon} size={15} />{game.league || game.round || (game.sport === 'football' ? 'Football' : 'Cricket')}</span>
         <span className={game.live ? 'scores-live-status' : 'scores-upcoming-status'}>
@@ -40,7 +46,8 @@ function MatchCard({ game }) {
         {innings.map((inning) => <span key={inning.id}>{inning.team || 'Innings'} <b>{inning.score}</b></span>)}
       </div>}
       {!game.live && <footer>{venue || game.round || 'Scheduled fixture'}</footer>}
-    </article>
+      {Card === 'button' && <span className="scores-match-details-cta">View live match details</span>}
+    </Card>
   )
 }
 
@@ -66,13 +73,13 @@ function RecentResultCard({ game, onOpen }) {
   const scores = gameInnings(game)
   const start = dateValue(game.starting_at)
   const sportIcon = game.sport === 'football' ? 'football' : 'cricket'
-  const Card = game.sport === 'football' ? 'button' : 'article'
+  const Card = Boolean(game.eventKey) || game.sport === 'football' ? 'button' : 'article'
   return (
     <Card
-      className={`scores-result-card${game.sport === 'football' ? ' is-clickable' : ''}`}
-      type={game.sport === 'football' ? 'button' : undefined}
-      onClick={game.sport === 'football' ? () => onOpen(game) : undefined}
-      aria-label={game.sport === 'football' ? `View details for ${home} versus ${away}` : undefined}
+      className={`scores-result-card${Card === 'button' ? ' is-clickable' : ''}`}
+      type={Card === 'button' ? 'button' : undefined}
+      onClick={Card === 'button' ? () => onOpen(game) : undefined}
+      aria-label={Card === 'button' ? `View details for ${home} versus ${away}` : undefined}
     >
       <header>
         <span><Icon name={sportIcon} size={15} />{game.league || game.round || (game.sport === 'football' ? 'Football' : 'Cricket')}</span>
@@ -85,12 +92,9 @@ function RecentResultCard({ game, onOpen }) {
           : game.result_info || 'Result unavailable'}</b>
         <span><TeamCrest team={game.visitorteam} name={away} />{away}</span>
       </div>
-      {scores.length > 0 && <div className="scores-result-scores">
-        {scores.map((score) => <span key={score.id}>{score.team || 'Score'} <b>{score.score}</b></span>)}
-      </div>}
       {game.result_info && <p>{game.result_info}</p>}
       {game.venue?.name && <small>{game.venue.name}</small>}
-      {game.sport === 'football' && <span className="scores-result-details-cta">View match details</span>}
+      {Card === 'button' && <span className="scores-result-details-cta">View match details</span>}
     </Card>
   )
 }
@@ -427,6 +431,123 @@ function FootballMatchDetails({ game, details, loading, error, onClose, onRetry,
   )
 }
 
+function CricketMatchDetails({ game, details, loading, error, onClose, onRetry }) {
+  const [activeTab, setActiveTab] = useState('Summary')
+  const home = details?.homeTeam || teamName(game.localteam) || 'Home'
+  const away = details?.awayTeam || teamName(game.visitorteam) || 'Away'
+  const innings = details?.scorecard && typeof details.scorecard === 'object'
+    ? Object.entries(details.scorecard)
+    : []
+  const info = [
+    ['Competition', details?.competition],
+    ['Format', details?.format],
+    ['Match date', details?.date],
+    ['Start time', details?.time],
+    ['Venue', details?.venue],
+    ['Toss', details?.toss],
+    ['Player of the match', details?.playerOfMatch],
+    ['Result', details?.result],
+  ].filter(([, value]) => value)
+  const wickets = details?.wickets && typeof details.wickets === 'object' ? details.wickets : {}
+  const comments = details?.comments && typeof details.comments === 'object' ? details.comments : {}
+  const extras = details?.extras && typeof details.extras === 'object' ? details.extras : {}
+  const Card = ({ children }) => <section className="scores-detail-section">{children}</section>
+  const tabs = ['Info', 'Summary', 'Scorecard', 'Commentary']
+
+  return (
+    <div className="scores-detail-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <section className="scores-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="cricket-detail-title">
+        <button className="scores-detail-close" type="button" onClick={onClose} aria-label="Close match details">×</button>
+        <header className="scores-detail-heading">
+          <span>{details?.competition || game.league || 'Cricket'}{details?.format ? ` · ${details.format}` : ''}</span>
+          <h2 id="cricket-detail-title">{home} <i>vs</i> {away}</h2>
+          <p>{[details?.date || (dateValue(game.starting_at) && dayFormatter.format(dateValue(game.starting_at))), details?.venue].filter(Boolean).join(' · ') || 'Match information unavailable'}</p>
+        </header>
+        {loading
+          ? <div className="scores-detail-loading" role="status"><span className="scores-spinner" />Loading cricket scorecard…</div>
+          : error
+            ? <div className="scores-detail-error" role="alert"><p>{error}</p><button type="button" onClick={() => onRetry(game)}>Try again</button></div>
+            : details && <>
+              <div className="scores-detail-score">
+                <div><TeamCrest team={{ name: home, crest: details.homeLogo }} name={home} /><b>{home}</b></div>
+                <strong>{details.homeScore || '–'} <i>·</i> {details.awayScore || '–'}</strong>
+                <div><TeamCrest team={{ name: away, crest: details.awayLogo }} name={away} /><b>{away}</b></div>
+                <small>{details.result || details.status || 'Match details'}</small>
+              </div>
+              <nav className="scores-detail-tabs" role="tablist" aria-label="Cricket match details">
+                {tabs.map((tab) => <button
+                  key={tab}
+                  id={`cricket-tab-${tab.toLowerCase()}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab}
+                  aria-controls="cricket-tab-panel"
+                  onClick={() => setActiveTab(tab)}
+                >{tab}</button>)}
+              </nav>
+              <div id="cricket-tab-panel" className="scores-detail-tab-panel" role="tabpanel" aria-labelledby={`cricket-tab-${activeTab.toLowerCase()}`}>
+                {activeTab === 'Info' && <Card>
+                  <h3>Match information</h3>
+                  {info.length
+                    ? <dl className="scores-detail-info">{info.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+                    : <p className="scores-detail-empty">No additional match information was provided.</p>}
+                </Card>}
+                {activeTab === 'Summary' && <>
+                  <Card>
+                    <h3>Match summary</h3>
+                    <p className="scores-detail-cricket-summary">{details.result || details.status || 'Match result is not available yet.'}</p>
+                    {details.toss && <p className="scores-detail-cricket-summary"><b>Toss:</b> {details.toss}</p>}
+                    {details.playerOfMatch && <p className="scores-detail-cricket-summary"><b>Player of the match:</b> {details.playerOfMatch}</p>}
+                  </Card>
+                  {Object.entries(wickets).some(([, values]) => Array.isArray(values) && values.length > 0) && <Card>
+                    <h3>Fall of wickets</h3>
+                    {Object.entries(wickets).map(([label, values]) => Array.isArray(values) && values.length > 0 && <div className="scores-detail-cricket-events" key={label}>
+                      <b>{label}</b>
+                      {values.map((item, index) => <p key={`${label}-${index}`}><time>{item.fall || '—'}</time> {item.score || ''} · {item.batsman || ''}{(item.bowler || item.balwer) ? ` · ${item.bowler || item.balwer}` : ''}</p>)}
+                    </div>)}
+                  </Card>}
+                </>}
+                {activeTab === 'Scorecard' && <Card>
+                  <h3>Innings scorecards</h3>
+                  {innings.length
+                    ? innings.map(([label, value]) => {
+                      const rows = Array.isArray(value) ? value : []
+                      const batting = rows.filter((row) => /bat/i.test(row.type || ''))
+                      const bowling = rows.filter((row) => /bowl/i.test(row.type || ''))
+                      const extra = extras[label]
+                      return <section className="scores-detail-cricket-innings" key={label}>
+                        <h4>{label}</h4>
+                        {batting.length > 0 && <div className="scores-detail-table-wrap"><table className="scores-detail-table">
+                          <thead><tr><th>Batter</th><th>Dismissal</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead>
+                          <tbody>{batting.map((row, index) => <tr key={`${label}-bat-${index}`}><td>{row.player || '—'}</td><td>{row.status || '—'}</td><td><b>{row.R ?? '—'}</b></td><td>{row.B ?? '—'}</td><td>{row['4s'] ?? '—'}</td><td>{row['6s'] ?? '—'}</td><td>{row.SR ?? '—'}</td></tr>)}</tbody>
+                        </table></div>}
+                        {extra && <p className="scores-detail-cricket-extra"><b>Extras:</b> {extra.total || '—'} {extra.text ? `(${extra.text})` : ''}{extra.overs ? ` · ${extra.overs} overs` : ''}</p>}
+                        {bowling.length > 0 && <div className="scores-detail-table-wrap"><table className="scores-detail-table">
+                          <thead><tr><th>Bowler</th><th>O</th><th>M</th><th>R</th><th>W</th><th>Economy</th></tr></thead>
+                          <tbody>{bowling.map((row, index) => <tr key={`${label}-bowl-${index}`}><td>{row.player || '—'}</td><td>{row.O ?? '—'}</td><td>{row.M ?? '—'}</td><td>{row.R ?? '—'}</td><td><b>{row.W ?? '—'}</b></td><td>{row.ER ?? '—'}</td></tr>)}</tbody>
+                        </table></div>}
+                        {!batting.length && !bowling.length && <p className="scores-detail-empty">No batting or bowling figures were provided for this innings.</p>}
+                      </section>
+                    })
+                    : <p className="scores-detail-empty">The provider has not returned an innings scorecard for this match.</p>}
+                </Card>}
+                {activeTab === 'Commentary' && <Card>
+                  <h3>Ball-by-ball commentary</h3>
+                  {Object.entries(comments).some(([, values]) => Array.isArray(values) && values.length > 0)
+                    ? Object.entries(comments).map(([label, values]) => Array.isArray(values) && values.length > 0 && <div className="scores-detail-cricket-events" key={label}>
+                      <b>{label}</b>
+                      {values.slice(0, 60).map((item, index) => <p key={`${label}-comment-${index}`}><time>{item.overs || '—'}</time> {item.post || `${item.runs ?? ''} runs`}</p>)}
+                    </div>)
+                    : <p className="scores-detail-empty">Ball-by-ball commentary is not available for this match.</p>}
+                </Card>}
+              </div>
+              <p className="scores-detail-provider-note">Scorecard information is supplied by API-Cricket and may not be available for every match.</p>
+            </>}
+      </section>
+    </div>
+  )
+}
+
 export default function LiveScoresPage({ embedded = false, backHref }) {
   const { user } = useAuth()
   const [sport, setSport] = useState('cricket')
@@ -454,7 +575,9 @@ export default function LiveScoresPage({ embedded = false, backHref }) {
     setMatchSectionLoading({})
     setMatchSectionErrors({})
     try {
-      const details = await fetchFootballMatchDetails(game.id)
+      const details = game.sport === 'cricket'
+        ? await fetchCricketMatchDetails(game.eventKey)
+        : await fetchFootballMatchDetails(game.id)
       if (requestId === detailsRequestId.current) setMatchDetails(details)
     } catch (detailError) {
       if (requestId === detailsRequestId.current) {
@@ -535,7 +658,7 @@ export default function LiveScoresPage({ embedded = false, backHref }) {
     .map((game) => game.league)
     .filter(Boolean))].sort((a, b) => a.localeCompare(b)), [liveGames, recentGames, upcomingGames])
   const sportLabel = sport === 'football' ? 'Football' : 'Cricket'
-  const scoreProvider = sport === 'football' ? 'football-data.org' : 'Sportmonks'
+  const scoreProvider = sport === 'football' ? 'football-data.org' : 'API-Cricket / Sportmonks'
   const sportIcon = sport === 'football' ? 'football' : 'cricket'
   const feedNotDeployed = /live score feed is not deployed yet/i.test(error)
   const returnHref = backHref || (user?.user_metadata?.account_type === 'venue_owner' ? '/owner' : '/dashboard')
@@ -558,7 +681,7 @@ export default function LiveScoresPage({ embedded = false, backHref }) {
           <Brand light href={returnHref} />
           <span className="scores-sidebar-label">PLAYLINK</span>
           <nav aria-label="PlayLink navigation">
-            {navigation.map((item) => <Link key={`${item.href}-${item.label}`} to={item.href} className={item.active ? 'active' : ''} aria-current={item.active ? 'page' : undefined} onClick={() => setSidebarOpen(false)}>
+            {navigation.filter((item) => user || !['/favorite-venues', '/messages', '/settings'].includes(item.href)).map((item) => <Link key={`${item.href}-${item.label}`} to={item.href} className={item.active ? 'active' : ''} aria-current={item.active ? 'page' : undefined} onClick={() => setSidebarOpen(false)}>
               <span>{item.href === '/settings' ? <img src="/settings-icon.png" alt="" /> : <Icon name={item.icon} size={17} />}</span>{item.label}
             </Link>)}
             {returnHref === '/admin' && <Link to="/admin" onClick={() => setSidebarOpen(false)}><span><Icon name="shield-check" size={17} /></span>Admin overview</Link>}
@@ -611,7 +734,7 @@ export default function LiveScoresPage({ embedded = false, backHref }) {
                     {(status === 'all' || status === 'live') && <section className="scores-section">
                     <header><div><span className="scores-live-indicator" /><h2>Live Now</h2><small>{visibleLiveGames.length} {visibleLiveGames.length === 1 ? 'match' : 'matches'}</small></div><button type="button" onClick={() => setStatus('live')}>View all <Icon name="arrow-right" size={14} /></button></header>
                     {visibleLiveGames.length
-                      ? <div className="scores-live-grid">{visibleLiveGames.map((game) => <MatchCard key={game.id} game={game} />)}</div>
+                      ? <div className="scores-live-grid">{visibleLiveGames.map((game) => <MatchCard key={game.id} game={game} onOpen={openMatchDetails} />)}</div>
                       : <div className="scores-empty scores-section-empty"><span><Icon name={sportIcon} size={21} /></span><b>No live {sportLabel.toLowerCase()} matches right now</b><small>Live matches covered by your {scoreProvider} plan appear here.</small></div>}
                   </section>}
                   {(status === 'all' || status === 'upcoming') && <section className="scores-section">
@@ -650,18 +773,27 @@ export default function LiveScoresPage({ embedded = false, backHref }) {
         </aside>
       </div>
       </div>
-      {selectedMatch && <FootballMatchDetails
-        game={selectedMatch}
-        details={matchDetails}
-        loading={matchDetailsLoading}
-        error={matchDetailsError}
-        sections={matchSections}
-        sectionLoading={matchSectionLoading}
-        sectionErrors={matchSectionErrors}
-        onLoadSection={loadMatchSection}
-        onClose={closeMatchDetails}
-        onRetry={openMatchDetails}
-      />}
+      {selectedMatch && (selectedMatch.sport === 'cricket'
+        ? <CricketMatchDetails
+          game={selectedMatch}
+          details={matchDetails}
+          loading={matchDetailsLoading}
+          error={matchDetailsError}
+          onClose={closeMatchDetails}
+          onRetry={openMatchDetails}
+        />
+        : <FootballMatchDetails
+          game={selectedMatch}
+          details={matchDetails}
+          loading={matchDetailsLoading}
+          error={matchDetailsError}
+          sections={matchSections}
+          sectionLoading={matchSectionLoading}
+          sectionErrors={matchSectionErrors}
+          onLoadSection={loadMatchSection}
+          onClose={closeMatchDetails}
+          onRetry={openMatchDetails}
+        />)}
     </main>
   )
 }

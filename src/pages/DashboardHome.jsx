@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import Header from '../components/Header.jsx'
 import DashboardShell from '../components/DashboardShell.jsx'
+import Footer from '../components/Footer.jsx'
 import Icon from '../components/Icon.jsx'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { supabase } from '../auth/supabase.js'
@@ -54,21 +56,21 @@ export default function DashboardHome() {
   const [events, setEvents] = useState([])
   const [counts, setCounts] = useState({ venues: 0, events: 0, teams: 0, players: 0 })
   const [loading, setLoading] = useState(true)
-  const fullName = profile?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Player'
+  const fullName = profile?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || ''
 
   useEffect(() => {
     let active = true
     async function loadDashboard() {
       setLoading(true)
       setError('')
-      if (!supabase || !user) {
-        setError('Connect to PlayLink with your Supabase account to load live dashboard data.')
+      if (!supabase) {
+        setError('PlayLink listings are temporarily unavailable. Please try again later.')
         setLoading(false)
         return
       }
       try {
         const [profileResult, venueResult, eventResult, venueCount, eventCount, teamCount, playerCount] = await Promise.all([
-          supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+          user ? supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle() : Promise.resolve({ data: null, error: null }),
           supabase.from('owner_venues').select('id, name, sport, area, price_per_hour, image_url').eq('is_active', true).order('created_at', { ascending: false }).limit(3),
           supabase.from('events').select('id, title, sport_type, location_text, start_time, status').eq('status', 'open').gte('start_time', new Date().toISOString()).order('start_time', { ascending: true }).limit(3),
           supabase.from('owner_venues').select('id', { count: 'exact', head: true }).eq('is_active', true),
@@ -103,16 +105,17 @@ export default function DashboardHome() {
     { title: 'Player Profiles', count: counts.players, subtitle: 'Community listings', icon: 'player', href: '/players' },
   ]
 
-  return (
-    <DashboardShell path="/dashboard" search={search} onSearch={setSearch}>
-      <div className="playlink-home-dashboard">
+  const dashboardContent = (
+    <div className="playlink-home-dashboard">
         <div className="home-dashboard-columns">
           <div className="home-dashboard-main">
             <section className="home-dashboard-hero">
               <div>
-                <h1>Welcome back,<br /><span>{fullName}.</span></h1>
+                <h1>{user ? <>Welcome back,<br /><span>{fullName}.</span></> : <>Your game.<br /><span>Your people.</span></>}</h1>
                 <p>Find courts, join games, and connect with your local sports community.</p>
-                <Link className="button button-primary" to="/venues">Explore Venues <span>→</span></Link>
+                {user
+                  ? <Link className="button button-primary" to="/venues">Explore Venues <span>→</span></Link>
+                  : <Link className="button button-primary" to="/get-started">Get started <span>→</span></Link>}
               </div>
             </section>
             {error && <p className="auth-message error" role="alert">{error}</p>}
@@ -142,15 +145,24 @@ export default function DashboardHome() {
                 <i>›</i>
               </Link>)}
             </section>
+            <LiveCricketScores />
             <section className="dashboard-upcoming-panel">
               <div className="dashboard-section-heading"><h2>Upcoming Events</h2><Link to="/events">View All <span>→</span></Link></div>
               {loading ? <div className="dashboard-home-empty">Loading events…</div> : filteredEvents.length ? filteredEvents.map((event) => <UpcomingEvent key={event.id} event={event} />)
                 : <div className="dashboard-home-empty"><b>No upcoming events</b><span>Published open events will appear here.</span></div>}
             </section>
-            <LiveCricketScores />
           </aside>
         </div>
-      </div>
-    </DashboardShell>
+    </div>
   )
+
+  if (user) {
+    return <DashboardShell path="/dashboard" search={search} onSearch={setSearch}>{dashboardContent}</DashboardShell>
+  }
+
+  return <>
+    <Header path="/dashboard" />
+    <main className="public-dashboard-main">{dashboardContent}</main>
+    <Footer />
+  </>
 }

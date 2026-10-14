@@ -13,6 +13,7 @@ import Settings from './pages/Settings.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
 import AuthPage from './auth/AuthPage.jsx'
 import AccountDashboardRoute from './auth/AccountDashboardRoute.jsx'
+import DashboardHome from './pages/DashboardHome.jsx'
 import { useAuth } from './auth/AuthContext.jsx'
 import { isDesignatedAdmin } from './auth/adminAccess.js'
 import { Navigate, useLocation } from 'react-router-dom'
@@ -20,6 +21,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './auth/supabase.js'
 import RestrictedAccountInbox from './components/RestrictedAccountInbox.jsx'
 import LiveScoresPage from './pages/LiveScoresPage.jsx'
+import Terms from './pages/Terms.jsx'
 
 export default function App() {
   const location = useLocation()
@@ -83,9 +85,21 @@ export default function App() {
       else window.location.assign('/sign-in')
     }}>Sign out</button>{signOutError && <p role="alert">{signOutError}</p>}</main>
   }
+  const requiresAccount = path === '/favorite-venues'
+    || path === '/messages'
+    || path === '/settings'
+    || path === '/profile'
+    || path === '/notifications'
+    || path === '/list-venue'
+  if (requiresAccount && !user) {
+    if (loading) return <div className="auth-loading" role="status">Loading PlayLink…</div>
+    return <Navigate to={`/sign-in?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  }
   if (path === '/') {
     if (loading) return <div className="auth-loading" role="status">Loading PlayLink…</div>
-    return <Navigate to={user ? (isDesignatedAdmin(user) ? '/admin' : '/dashboard') : '/sign-in'} replace />
+    return user
+      ? <Navigate to={isDesignatedAdmin(user) ? '/admin' : '/dashboard'} replace />
+      : <DashboardHome />
   }
   if (path === '/venues') return <Venues />
   if (path === '/favorite-venues') return <FavoriteVenues />
@@ -99,12 +113,11 @@ export default function App() {
   if (path === '/settings') return <Settings />
   if (path === '/live-scores') {
     if (loading) return <div className="auth-loading" role="status">Connecting to your account…</div>
-    return user
-      ? <LiveScoresPage backHref={isDesignatedAdmin(user) ? '/admin' : undefined} />
-      : <Navigate to="/sign-in?next=/live-scores" replace />
+    return <LiveScoresPage backHref={user && isDesignatedAdmin(user) ? '/admin' : undefined} />
   }
   if (path === '/sign-in') return <AuthPage key="login" mode="login" />
   if (path === '/get-started' || path === '/sign-up') return <AuthPage key="signup" mode="signup" />
+  if (path === '/terms') return <Terms />
   if (path === '/complete-google-profile') return <AuthPage key="google-complete" mode="google-complete" />
   if (path === '/forgot-password') return <AuthPage key="forgot" mode="forgot" />
   if (path === '/reset-password') return <AuthPage key="reset" mode="reset" />
@@ -113,10 +126,7 @@ export default function App() {
   if (path === '/dashboard') {
     if (loading) return <div className="auth-loading" role="status">Connecting to your account…</div>
     if (user && isDesignatedAdmin(user)) return <Navigate to="/admin" replace />
-    const callbackParams = new URLSearchParams({ next: '/dashboard' })
-    const oauthError = new URLSearchParams(location.search).get('error_description')
-    if (oauthError) callbackParams.set('oauth_error', oauthError)
-    return user ? <AccountDashboardRoute /> : <Navigate to={`/sign-in?${callbackParams.toString()}`} replace />
+    return user ? <AccountDashboardRoute /> : <DashboardHome />
   }
   if (path === '/profile') {
     if (loading) return <div className="auth-loading" role="status">Connecting to your account…</div>

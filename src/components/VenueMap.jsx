@@ -26,7 +26,7 @@ export default function VenueMap({ venues, selectedVenue, onSelect, userCoordina
       <div className="map-panel-heading">
         <span className="map-pin-icon"><Icon name="map" size={16} /></span>
         <span><b>PlayLink Map</b><small>{selectedVenue ? selectedVenue.name : 'Explore Kathmandu Valley'}</small></span>
-        <span className="map-provider-mark" aria-label="OpenStreetMap"><Icon name="compass" size={16} /></span>
+        <span className="map-provider-mark" aria-label="Google Maps"><Icon name="compass" size={16} /></span>
         <button className="map-size-toggle" type="button" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? 'Restore map to previous size' : 'Expand map to fullscreen'} title={expanded ? 'Restore map size' : 'Expand map'}>
           <Icon name={expanded ? 'collapse' : 'expand'} size={16} />
           <span>{expanded ? 'Restore size' : 'Expand map'}</span>
@@ -34,10 +34,8 @@ export default function VenueMap({ venues, selectedVenue, onSelect, userCoordina
       </div>
       <InlineDirectionsMap
         className="venue-map-canvas"
-        venues={venues}
         selectedVenue={selectedVenue}
         origin={origin}
-        onSelect={onSelect}
       />
       {venues.length > 0 && <div className="google-map-venue-list" aria-label="Choose a venue to center on the map">
         {venues.map((venue) => <button key={venue.id} type="button" className={selectedVenue?.id === venue.id ? 'active' : ''} onClick={() => onSelect(venue)}><Icon name="pin" size={13} />{venue.name}</button>)}
@@ -45,11 +43,11 @@ export default function VenueMap({ venues, selectedVenue, onSelect, userCoordina
       {selectedVenue && <section className="venue-directions-panel" aria-label={`Directions to ${selectedVenue.name}`}>
         <div className="venue-directions-heading"><span><Icon name="compass" size={15} /></span><div><b>Directions to {selectedVenue.name}</b><small>{selectedVenue.area}</small></div></div>
         {userCoordinates
-          ? <p className="venue-directions-message">Your driving route is drawn on this page. Your current location is sent to OpenStreetMap routing to calculate it.</p>
+          ? <p className="venue-directions-message">Google Maps uses your current location to show driving directions to this venue.</p>
           : <button type="button" className="venue-use-location" onClick={onFindLocation}>Show directions here using my location</button>}
         {locationMessage && <p className="venue-directions-message" role="status">{locationMessage}</p>}
       </section>}
-      <div className="map-legend"><span>{selectedVenue?.isOwnerListing ? 'Location from venue owner' : 'Map locations are examples'}</span><span>{selectedVenue?.isOwnerListing ? 'Confirm details with the venue' : 'Venue listings are not verified'}</span></div>
+      <div className="map-legend"><span>{selectedVenue ? `Showing ${selectedVenue.name} in Google Maps` : `${venues.length} owner-listed venues available`}</span><span>Locations are provided by venue owners; confirm before visiting.</span></div>
     </section>
   )
 

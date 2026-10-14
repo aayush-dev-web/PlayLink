@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "audit:production": "npm audit --omit=dev --audit-level=high",
+    "check:production": "npm run build && npm run audit:production"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
-    "maplibre-gl": "^6.13.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.4"

@@ -6,7 +6,10 @@ import { isDesignatedAdmin, isDesignatedAdminEmail } from './adminAccess.js'
 import VenuePhotoPicker from '../components/VenuePhotoPicker.jsx'
 import { uploadVenuePhoto, validateVenuePhoto } from '../data/venuePhotos.js'
 import usePlayLinkSports from '../hooks/usePlayLinkSports.js'
+import { reverseGeocodeLocation } from '../utils/locationName.js'
 import './auth.css'
+
+const CURRENT_TERMS_VERSION = '2026-10-12'
 
 const viewContent = {
   signup: {
@@ -52,6 +55,48 @@ const viewContent = {
 }
 function ConfigurationMessage() {
   return <div className="auth-config-message" role="status">Authentication is not configured yet. Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to your local <code>.env.local</code>, then restart Vite.</div>
+}
+
+function coordinatePair(latitude, longitude) {
+  const lat = Number(latitude)
+  const lon = Number(longitude)
+  return latitude !== '' && longitude !== ''
+    && Number.isFinite(lat) && lat >= -90 && lat <= 90
+    && Number.isFinite(lon) && lon >= -180 && lon <= 180
+}
+
+function requireRegistrationLocation(form) {
+  const homeLocation = form.homeLocation.trim()
+  if (homeLocation.length < 2 || homeLocation.length > 160
+    || !coordinatePair(form.homeLatitude, form.homeLongitude)) {
+    throw new Error('Enter your city or area and valid latitude and longitude, or use the GPS button and complete any missing fields.')
+  }
+  return {
+    home_location: homeLocation,
+    home_latitude: Number(form.homeLatitude),
+    home_longitude: Number(form.homeLongitude),
+  }
+}
+
+function requireVenueCoordinates(venue) {
+  if (!coordinatePair(venue.latitude, venue.longitude)) {
+    throw new Error('Venue location is required. Enter valid venue latitude and longitude, or use the GPS button.')
+  }
+}
+
+function SignupLocationFields({ prefix, form, onChange, onUseLocation, busy, error }) {
+  return <fieldset className="auth-signup-location">
+    <legend>Your location</legend>
+    <p>Share your current location with PlayLink, or enter a place and coordinates manually. GPS is used only when you tap the button.</p>
+    <button className="auth-location-button" type="button" onClick={onUseLocation} disabled={busy}>{busy ? 'Getting your location…' : 'Use my current location'}</button>
+    <label htmlFor={`${prefix}-home-location`}>City / area</label>
+    <input id={`${prefix}-home-location`} autoComplete="address-level2" value={form.homeLocation} onChange={onChange('homeLocation')} required minLength="2" maxLength="160" placeholder="e.g. Kathmandu" />
+    <div className="auth-owner-coordinate-row">
+      <span><label htmlFor={`${prefix}-home-latitude`}>Latitude</label><input id={`${prefix}-home-latitude`} type="number" min="-90" max="90" step="any" value={form.homeLatitude} onChange={onChange('homeLatitude')} required /></span>
+      <span><label htmlFor={`${prefix}-home-longitude`}>Longitude</label><input id={`${prefix}-home-longitude`} type="number" min="-180" max="180" step="any" value={form.homeLongitude} onChange={onChange('homeLongitude')} required /></span>
+    </div>
+    {error && <p className="auth-location-error" role="alert">{error}</p>}
+  </fieldset>
 }
 
 function passwordStrength(value) {
@@ -349,8 +394,9 @@ export default function AuthPage({ mode = 'signup' }) {
   const postLoginPath = requestedReturnTo?.startsWith('/') && !requestedReturnTo.startsWith('//')
     ? requestedReturnTo
     : isDesignatedAdmin(user) ? '/admin' : '/dashboard'
+  const returnQuery = requestedReturnTo ? `?next=${encodeURIComponent(postLoginPath)}` : ''
   const view = viewContent[mode] || viewContent.signup
-  const [form, setForm] = useState({ fullName: '', username: '', email: '', phone: '', password: '', confirmPassword: '', otp: '', recoveryOtp: '', accountType: 'player', preferredSport: 'Futsal', ownerVenue: { name: '', sport: 'Futsal', area: '', address: '', price_per_hour: '', image_url: '', latitude: '', longitude: '', maps_url: '', description: '', is_active: true } })
+  const [form, setForm] = useState({ fullName: '', username: '', email: '', phone: '', password: '', confirmPassword: '', otp: '', recoveryOtp: '', accountType: 'player', preferredSport: 'Futsal', homeLocation: '', homeLatitude: '', homeLongitude: '', acceptedTerms: false, ownerVenue: { name: '', sport: 'Futsal', area: '', address: '', price_per_hour: '', image_url: '', latitude: '', longitude: '', maps_url: '', description: '', is_active: true } })
   const [busy, setBusy] = useState(false)
   const [otpSent, setOtpSent] = useState(false)
   const [recoveryOtpSent, setRecoveryOtpSent] = useState(false)
@@ -360,6 +406,10 @@ export default function AuthPage({ mode = 'signup' }) {
   const [usernameSuggestions, setUsernameSuggestions] = useState([])
   const [venuePhotoFile, setVenuePhotoFile] = useState(null)
   const [pendingOwnerPhotoUserId, setPendingOwnerPhotoUserId] = useState('')
+  const [locationBusy, setLocationBusy] = useState(false)
+  const [locationError, setLocationError] = useState('')
+  const [venueLocationBusy, setVenueLocationBusy] = useState(false)
+  const [venueLocationError, setVenueLocationError] = useState('')
   const [resendCooldown, setResendCooldown] = useState(0)
   const [challengeExpiresAt, setChallengeExpiresAt] = useState(0)
   const [challengeSecondsRemaining, setChallengeSecondsRemaining] = useState(0)
@@ -413,7 +463,7 @@ export default function AuthPage({ mode = 'signup' }) {
 
   useEffect(() => {
     if (user && (mode === 'signup' || mode === 'login')) {
-      navigate(mode === 'login' ? (isDesignatedAdmin(user) ? '/admin' : postLoginPath) : '/dashboard', { replace: true })
+      navigate(isDesignatedAdmin(user) ? '/admin' : postLoginPath, { replace: true })
     }
   }, [user, mode, navigate, postLoginPath])
 
@@ -421,6 +471,7 @@ export default function AuthPage({ mode = 'signup' }) {
     return (event) => {
       const value = event.target.value
       setForm((current) => ({ ...current, [key]: value, ...(key === 'email' && mode === 'forgot' ? { recoveryOtp: '' } : {}) }))
+      if (['homeLocation', 'homeLatitude', 'homeLongitude'].includes(key)) setLocationError('')
       if (key === 'email' && mode === 'forgot') {
         setRecoveryOtpSent(false)
         setResendCooldown(0)
@@ -437,7 +488,46 @@ export default function AuthPage({ mode = 'signup' }) {
     return (event) => {
       const value = key === 'is_active' ? event.target.checked : event.target.value
       setForm((current) => ({ ...current, ownerVenue: { ...current.ownerVenue, [key]: value } }))
+      if (key === 'latitude' || key === 'longitude') setVenueLocationError('')
     }
+  }
+
+  function captureLocation(target) {
+    const setBusyState = target === 'home' ? setLocationBusy : setVenueLocationBusy
+    const setErrorState = target === 'home' ? setLocationError : setVenueLocationError
+    setBusyState(true)
+    setErrorState('')
+    if (!navigator.geolocation) {
+      setErrorState('GPS is unavailable in this browser. Enter the location and coordinates manually.')
+      setBusyState(false)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      const latitude = coords.latitude.toFixed(6)
+      const longitude = coords.longitude.toFixed(6)
+      if (target === 'venue') {
+        setForm((current) => ({ ...current, ownerVenue: { ...current.ownerVenue, latitude, longitude } }))
+        setBusyState(false)
+        return
+      }
+      try {
+        const label = await reverseGeocodeLocation(coords.latitude, coords.longitude)
+        setForm((current) => ({ ...current, homeLocation: label, homeLatitude: latitude, homeLongitude: longitude }))
+      } catch {
+        setForm((current) => ({ ...current, homeLatitude: latitude, homeLongitude: longitude }))
+        setErrorState('Coordinates captured, but the place name could not be found. Enter the location name manually.')
+      } finally {
+        setBusyState(false)
+      }
+    }, (error) => {
+      const reason = error.code === error.PERMISSION_DENIED
+        ? 'Location permission was denied.'
+        : error.code === error.TIMEOUT
+          ? 'Location lookup timed out.'
+          : 'Your current location could not be determined.'
+      setErrorState(`${reason} Enter the location and coordinates manually.`)
+      setBusyState(false)
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 })
   }
 
   function changeVenuePhoto(event) {
@@ -488,6 +578,8 @@ export default function AuthPage({ mode = 'signup' }) {
     try {
       if (mode === 'google-complete') {
         if (!user) throw new Error('Sign in with Google before completing your PlayLink profile.')
+        if (!form.acceptedTerms) throw new Error('You must agree to the Terms and Conditions to continue.')
+        const registrationLocation = requireRegistrationLocation(form)
         if (!/^[A-Za-z0-9_]{3,24}$/.test(form.username)) {
           showMessage('Username must be 3–24 characters and contain only letters, numbers, or underscores.')
           return
@@ -509,6 +601,7 @@ export default function AuthPage({ mode = 'signup' }) {
           showMessage('Add your venue name and district or area to continue as a venue owner.')
           return
         }
+        if (form.accountType === 'venue_owner') requireVenueCoordinates(form.ownerVenue)
         if (venuePhotoFile) validateVenuePhoto(venuePhotoFile)
         const { data: existingProfile, error: profileError } = await supabase.from('profiles')
           .select('account_type,onboarding_completed')
@@ -516,7 +609,15 @@ export default function AuthPage({ mode = 'signup' }) {
           .maybeSingle()
         if (profileError) throw profileError
         if (existingProfile?.onboarding_completed !== true) {
-          const { error: passwordError } = await supabase.auth.updateUser({ password: form.password })
+          const { error: passwordError } = await supabase.auth.updateUser({
+            password: form.password,
+            data: {
+              ...registrationLocation,
+              terms_accepted: true,
+              terms_version: CURRENT_TERMS_VERSION,
+              terms_accepted_at: new Date().toISOString(),
+            },
+          })
           if (passwordError) throw passwordError
           const { error } = await supabase.rpc('complete_google_profile', {
             requested_username: form.username.trim().toLowerCase(),
@@ -537,12 +638,12 @@ export default function AuthPage({ mode = 'signup' }) {
           .eq('id', user.id)
         if (sportError) throw sportError
         if (form.accountType === 'venue_owner' && venuePhotoFile) await uploadInitialOwnerVenuePhoto(user.id, venuePhotoFile)
-        navigate('/dashboard', { replace: true })
+        navigate(postLoginPath, { replace: true })
       } else if (mode === 'signup') {
         if (pendingOwnerPhotoUserId) {
           if (venuePhotoFile) await uploadInitialOwnerVenuePhoto(pendingOwnerPhotoUserId, venuePhotoFile)
           setPendingOwnerPhotoUserId('')
-          navigate('/dashboard', { replace: true })
+          navigate(postLoginPath, { replace: true })
           return
         }
         if (otpSent) {
@@ -568,13 +669,13 @@ export default function AuthPage({ mode = 'signup' }) {
             setPendingOwnerPhotoUserId(data.user.id)
             if (form.accountType === 'venue_owner' && venuePhotoFile) await uploadInitialOwnerVenuePhoto(data.user.id, venuePhotoFile)
             setPendingOwnerPhotoUserId('')
-            navigate('/dashboard', { replace: true })
+            navigate(postLoginPath, { replace: true })
           }
           else {
             showMessage(form.accountType === 'venue_owner' && venuePhotoFile
               ? 'Your email is verified. Sign in, then add your venue photo from Your Venue in the owner workspace.'
               : 'Your email is verified. You can now log in.', 'success')
-            window.setTimeout(() => navigate('/sign-in', { replace: true }), 900)
+            window.setTimeout(() => navigate(`/sign-in${returnQuery}`, { replace: true }), 900)
           }
           return
         }
@@ -582,6 +683,7 @@ export default function AuthPage({ mode = 'signup' }) {
           showMessage('Username must be 3–24 characters and contain only letters, numbers, or underscores.')
           return
         }
+        if (!form.acceptedTerms) throw new Error('You must agree to the Terms and Conditions to create an account.')
         if (form.password !== form.confirmPassword) {
           showMessage('Your passwords do not match.')
           return
@@ -590,6 +692,8 @@ export default function AuthPage({ mode = 'signup' }) {
           showMessage('Add your venue name and district or area to create a venue-owner account.')
           return
         }
+        const registrationLocation = requireRegistrationLocation(form)
+        if (form.accountType === 'venue_owner') requireVenueCoordinates(form.ownerVenue)
         if (form.accountType === 'venue_owner' && venuePhotoFile) validateVenuePhoto(venuePhotoFile)
         const { data: isAvailable, error: usernameError } = await supabase.rpc('is_username_available', {
           requested_username: form.username.trim().toLowerCase(),
@@ -615,6 +719,10 @@ export default function AuthPage({ mode = 'signup' }) {
               phone: form.phone.trim(),
               account_type: form.accountType,
               preferred_sport: form.preferredSport,
+              terms_accepted: true,
+              terms_version: CURRENT_TERMS_VERSION,
+              terms_accepted_at: new Date().toISOString(),
+              ...registrationLocation,
               ...(form.accountType === 'venue_owner' ? { owner_venue: { ...form.ownerVenue, image_url: '' } } : {}),
             },
           },
@@ -638,7 +746,7 @@ export default function AuthPage({ mode = 'signup' }) {
           if (data.user) setPendingOwnerPhotoUserId(data.user.id)
           if (form.accountType === 'venue_owner' && venuePhotoFile) await uploadInitialOwnerVenuePhoto(data.user.id, venuePhotoFile)
           setPendingOwnerPhotoUserId('')
-          navigate('/dashboard', { replace: true })
+          navigate(postLoginPath, { replace: true })
         }
         else {
           setOtpSent(true)
@@ -829,6 +937,11 @@ export default function AuthPage({ mode = 'signup' }) {
                 <PasswordField id="auth-google-confirm-password" label="Confirm password" autoComplete="new-password" value={form.confirmPassword} onChange={change('confirmPassword')} />
                 <label htmlFor="auth-google-account-type">I’m joining as</label><select className="auth-select" id="auth-google-account-type" value={form.accountType} onChange={change('accountType')}><option value="player">Player</option><option value="venue_owner">Venue owner</option></select>
                 <label htmlFor="auth-google-preferred-sport">Preferred sport</label><select className="auth-select" id="auth-google-preferred-sport" value={form.preferredSport} onChange={change('preferredSport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select>
+                <SignupLocationFields prefix="auth-google" form={form} onChange={change} onUseLocation={() => captureLocation('home')} busy={locationBusy} error={locationError} />
+                <label className="auth-terms-acceptance">
+                  <input type="checkbox" checked={form.acceptedTerms} onChange={(event) => setForm((current) => ({ ...current, acceptedTerms: event.target.checked }))} required />
+                  <span>I have read and agree to the <Link to="/terms" target="_blank" rel="noreferrer">Terms and Conditions</Link>.</span>
+                </label>
                 {sportsError && <p className="auth-message error" role="alert">{sportsError}</p>}
                 {form.accountType === 'venue_owner' && <fieldset className="auth-owner-venue">
                   <legend>Venue profile</legend>
@@ -840,7 +953,9 @@ export default function AuthPage({ mode = 'signup' }) {
                   <label htmlFor="auth-google-venue-address">Street address</label><input id="auth-google-venue-address" value={form.ownerVenue.address} onChange={changeOwnerVenue('address')} maxLength="240" placeholder="Full address" />
                   <label htmlFor="auth-google-venue-price">Hourly rate (Rs)</label><input id="auth-google-venue-price" type="number" min="0" step="50" value={form.ownerVenue.price_per_hour} onChange={changeOwnerVenue('price_per_hour')} required />
                   <VenuePhotoPicker id="auth-google-venue-photo" file={venuePhotoFile} currentUrl={form.ownerVenue.image_url} onChange={changeVenuePhoto} />
-                  <div className="auth-owner-coordinate-row"><span><label htmlFor="auth-google-venue-latitude">Latitude <span className="auth-optional">(optional)</span></label><input id="auth-google-venue-latitude" type="number" min="-90" max="90" step="any" value={form.ownerVenue.latitude} onChange={changeOwnerVenue('latitude')} /></span><span><label htmlFor="auth-google-venue-longitude">Longitude <span className="auth-optional">(optional)</span></label><input id="auth-google-venue-longitude" type="number" min="-180" max="180" step="any" value={form.ownerVenue.longitude} onChange={changeOwnerVenue('longitude')} /></span></div>
+                  <button className="auth-location-button" type="button" onClick={() => captureLocation('venue')} disabled={venueLocationBusy}>{venueLocationBusy ? 'Getting venue coordinates…' : 'Use current location for venue'}</button>
+                  <div className="auth-owner-coordinate-row"><span><label htmlFor="auth-google-venue-latitude">Venue latitude</label><input id="auth-google-venue-latitude" type="number" min="-90" max="90" step="any" value={form.ownerVenue.latitude} onChange={changeOwnerVenue('latitude')} required /></span><span><label htmlFor="auth-google-venue-longitude">Venue longitude</label><input id="auth-google-venue-longitude" type="number" min="-180" max="180" step="any" value={form.ownerVenue.longitude} onChange={changeOwnerVenue('longitude')} required /></span></div>
+                  {venueLocationError && <p className="auth-location-error" role="alert">{venueLocationError}</p>}
                   <label htmlFor="auth-google-venue-maps">Google Maps link <span className="auth-optional">(optional)</span></label><input id="auth-google-venue-maps" type="url" value={form.ownerVenue.maps_url} onChange={changeOwnerVenue('maps_url')} placeholder="https://www.google.com/maps/search/…" />
                   <label htmlFor="auth-google-venue-description">About this venue <span className="auth-optional">(optional)</span></label><textarea className="auth-owner-description" id="auth-google-venue-description" rows="3" maxLength="1000" value={form.ownerVenue.description} onChange={changeOwnerVenue('description')} placeholder="Describe your facilities." />
                 </fieldset>}
@@ -852,6 +967,11 @@ export default function AuthPage({ mode = 'signup' }) {
                 <label htmlFor="auth-signup-email">Email address</label><input id="auth-signup-email" type="email" autoComplete="email" value={form.email} onChange={change('email')} placeholder="you@example.com" required />
                 <label htmlFor="auth-account-type">I’m joining as</label><select className="auth-select" id="auth-account-type" value={form.accountType} onChange={change('accountType')}><option value="player">Player</option><option value="venue_owner">Venue owner</option></select>
                 <label htmlFor="auth-preferred-sport">Preferred sport</label><select className="auth-select" id="auth-preferred-sport" value={form.preferredSport} onChange={change('preferredSport')}>{sportOptions.map((item) => <option key={item.slug}>{item.name}</option>)}<option>Both</option></select>
+                <SignupLocationFields prefix="auth-signup" form={form} onChange={change} onUseLocation={() => captureLocation('home')} busy={locationBusy} error={locationError} />
+                <label className="auth-terms-acceptance">
+                  <input type="checkbox" checked={form.acceptedTerms} onChange={(event) => setForm((current) => ({ ...current, acceptedTerms: event.target.checked }))} required />
+                  <span>I have read and agree to the <Link to="/terms" target="_blank" rel="noreferrer">Terms and Conditions</Link>.</span>
+                </label>
                 {sportsError && <p className="auth-message error" role="alert">{sportsError}</p>}
                 {form.accountType === 'venue_owner' && <fieldset className="auth-owner-venue">
                   <legend>Venue profile</legend>
@@ -864,7 +984,9 @@ export default function AuthPage({ mode = 'signup' }) {
                   <label htmlFor="auth-venue-address">Street address</label><input id="auth-venue-address" value={form.ownerVenue.address} onChange={changeOwnerVenue('address')} maxLength="240" placeholder="Full address" />
                   <label htmlFor="auth-venue-price">Hourly rate (Rs)</label><input id="auth-venue-price" type="number" min="0" step="50" value={form.ownerVenue.price_per_hour} onChange={changeOwnerVenue('price_per_hour')} required />
                   <VenuePhotoPicker id="auth-venue-photo" file={venuePhotoFile} currentUrl={form.ownerVenue.image_url} onChange={changeVenuePhoto} />
-                  <div className="auth-owner-coordinate-row"><span><label htmlFor="auth-venue-latitude">Latitude <span className="auth-optional">(optional)</span></label><input id="auth-venue-latitude" type="number" min="-90" max="90" step="any" value={form.ownerVenue.latitude} onChange={changeOwnerVenue('latitude')} placeholder="27.7152" /></span><span><label htmlFor="auth-venue-longitude">Longitude <span className="auth-optional">(optional)</span></label><input id="auth-venue-longitude" type="number" min="-180" max="180" step="any" value={form.ownerVenue.longitude} onChange={changeOwnerVenue('longitude')} placeholder="85.3128" /></span></div>
+                  <button className="auth-location-button" type="button" onClick={() => captureLocation('venue')} disabled={venueLocationBusy}>{venueLocationBusy ? 'Getting venue coordinates…' : 'Use current location for venue'}</button>
+                  <div className="auth-owner-coordinate-row"><span><label htmlFor="auth-venue-latitude">Venue latitude</label><input id="auth-venue-latitude" type="number" min="-90" max="90" step="any" value={form.ownerVenue.latitude} onChange={changeOwnerVenue('latitude')} required placeholder="27.7152" /></span><span><label htmlFor="auth-venue-longitude">Venue longitude</label><input id="auth-venue-longitude" type="number" min="-180" max="180" step="any" value={form.ownerVenue.longitude} onChange={changeOwnerVenue('longitude')} required placeholder="85.3128" /></span></div>
+                  {venueLocationError && <p className="auth-location-error" role="alert">{venueLocationError}</p>}
                   <label htmlFor="auth-venue-maps">Google Maps link <span className="auth-optional">(optional)</span></label><input id="auth-venue-maps" type="url" value={form.ownerVenue.maps_url} onChange={changeOwnerVenue('maps_url')} placeholder="https://www.google.com/maps/search/…" />
                   <label htmlFor="auth-venue-description">About this venue <span className="auth-optional">(optional)</span></label><textarea className="auth-owner-description" id="auth-venue-description" rows="3" maxLength="1000" value={form.ownerVenue.description} onChange={changeOwnerVenue('description')} placeholder="Tell players about your facilities, surface, changing rooms or lights." />
                   <label className="auth-owner-active"><input type="checkbox" checked={form.ownerVenue.is_active} onChange={changeOwnerVenue('is_active')} /><span>Show this venue to players after registration</span></label>
@@ -909,10 +1031,10 @@ export default function AuthPage({ mode = 'signup' }) {
               {mode === 'signup' && usernameSuggestions.length > 0 && <div className="auth-username-suggestions" aria-label="Suggested available usernames">{usernameSuggestions.map((suggestion) => <button type="button" key={suggestion} onClick={() => { setForm((current) => ({ ...current, username: suggestion })); setUsernameSuggestions([]); setMessage('') }}>@{suggestion}</button>)}</div>}
               {!supabaseConfigured && <ConfigurationMessage />}
             </form>
-            {mode === 'signup' && <p className="auth-switch-copy">Already have an account? <Link to="/sign-in">Log in</Link></p>}
+            {mode === 'signup' && <p className="auth-switch-copy">Already have an account? <Link to={`/sign-in${returnQuery}`}>Log in</Link></p>}
             {mode === 'google-complete' && <p className="auth-switch-copy">Your Google account is connected. Your PlayLink profile will be saved when you complete this form.</p>}
-            {mode === 'login' && <p className="auth-switch-copy">New to PlayLink? <Link to="/get-started">Create an account</Link></p>}
-            {mode === 'login' && isDesignatedAdminEmail(form.email) && <p className="auth-switch-copy">First admin setup? <Link to="/get-started">Create and verify this account</Link>, or <Link to="/forgot-password">reset its password</Link> if it already exists. After verifying the email, apply <code>20261003090000_admin_dashboard_access.sql</code> and <code>20261008170000_player_admin_profiles_and_inbox.sql</code> in the connected Supabase project.</p>}
+            {mode === 'login' && <p className="auth-switch-copy">New to PlayLink? <Link to={`/get-started${returnQuery}`}>Create an account</Link></p>}
+            {mode === 'login' && isDesignatedAdminEmail(form.email) && <p className="auth-switch-copy">First admin setup? <Link to={`/get-started${returnQuery}`}>Create and verify this account</Link>, or <Link to="/forgot-password">reset its password</Link> if it already exists. After verifying the email, apply <code>20261003090000_admin_dashboard_access.sql</code> and <code>20261008170000_player_admin_profiles_and_inbox.sql</code> in the connected Supabase project.</p>}
             {mode === 'forgot' && <p className="auth-switch-copy"><Link to="/sign-in">Log in</Link></p>}
             {mode === 'reset' && <p className="auth-switch-copy"><Link to="/sign-in">Return to login</Link></p>}
           </div>

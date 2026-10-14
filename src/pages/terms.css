@@ -1,0 +1,19 @@
+.terms-page { width: min(860px,calc(100% - 32px)); margin: 32px auto; padding: clamp(20px,5vw,48px); border: 1px solid #e4eaf0; border-radius: 16px; color: #42596d; background: #fff; box-shadow: 0 14px 38px rgba(11,45,79,.07); }
+.terms-header { padding-bottom: 24px; border-bottom: 1px solid #e8edf1; }
+.terms-back-link,.terms-footer a { color: #16814a; font-size: 13px; font-weight: 700; text-decoration: none; }
+.terms-back-link:hover,.terms-footer a:hover { text-decoration: underline; }
+.terms-eyebrow { display: block; margin-top: 30px; color: #16814a; font-size: 11px; font-weight: 800; letter-spacing: 1.4px; }
+.terms-header h1 { margin: 8px 0 7px; color: #0b2d4f; font: 800 clamp(28px,5vw,40px)/1.15 'Manrope',sans-serif; letter-spacing: -1px; }
+.terms-header > p { margin: 0; color: #718397; font-size: 13px; }
+.terms-notice { margin: 20px 0 27px; padding: 12px 14px; border: 1px solid #d9eadf; border-radius: 8px; color: #456b54; background: #f4faf6; font-size: 12px; line-height: 1.6; }
+.terms-content section + section { margin-top: 23px; }
+.terms-content h2 { margin: 0 0 8px; color: #173b58; font: 700 17px/1.4 'Manrope',sans-serif; }
+.terms-content p { margin: 0 0 9px; font-size: 13px; line-height: 1.75; }
+.terms-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin-top: 30px; padding-top: 18px; border-top: 1px solid #e8edf1; }
+@media (max-width: 480px) {
+  .terms-page { width: calc(100% - 20px); margin: 10px auto; padding: 18px 15px; border-radius: 11px; }
+  .terms-eyebrow { margin-top: 23px; font-size: 9px; }
+  .terms-content h2 { font-size: 15px; }
+  .terms-content p { font-size: 12px; }
+  .terms-footer { flex-direction: column; }
+}

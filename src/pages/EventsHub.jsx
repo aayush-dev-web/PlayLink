@@ -128,6 +128,14 @@ export default function EventsHub() {
     .sort((first, second) => new Date(first.start_time) - new Date(second.start_time))[0], [events, today])
 
   const canOrganize = Boolean(user && user.id !== 'playlink-local-demo' && ['player', 'team_organizer', 'venue_owner'].includes(accountType))
+  const beginCreateEvent = () => {
+    if (!user) {
+      window.location.assign('/sign-in?next=%2Fevents')
+      return
+    }
+    setCreateError('')
+    setShowCreate(true)
+  }
 
   useEffect(() => {
     let timer
@@ -351,7 +359,7 @@ export default function EventsHub() {
               <label><small>Date</small><input value={date} onChange={(event) => setDate(event.target.value)} type="date" aria-label="Filter by event date" /></label>
               <label><small>Sport</small><select value={sport} onChange={(event) => setSport(event.target.value)}><option value="">All sports</option>{sportOptions.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></label>
               <label><small>Status</small><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="upcoming">Upcoming</option><option value="open">Open</option><option value="full">Full</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="all">All events</option></select></label>
-              <button className="button button-primary create-event-button" type="button" onClick={() => { setCreateError(''); setShowCreate(true) }}><Icon name="add" size={15} /> Create Event</button>
+              <button className="button button-primary create-event-button" type="button" onClick={beginCreateEvent}><Icon name="add" size={15} /> {user ? 'Create Event' : 'Sign in to create'}</button>
             </div>
             <div className="events-result-bar"><span>{loading ? 'Searching events…' : `Showing ${events.length} ${events.length === 1 ? 'event' : 'events'}`}</span><label className="events-spots-toggle"><input type="checkbox" checked={availableOnly} onChange={(event) => setAvailableOnly(event.target.checked)} /> Spots available</label><label>Sort by <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="newest">Newest first</option><option value="soonest">Soonest first</option><option value="title">Event name</option></select></label></div>
             {(error || sportsError) && <p className="event-feedback error" role="alert">{error || sportsError}</p>}
@@ -371,7 +379,7 @@ export default function EventsHub() {
               <div className="events-calendar-month"><button type="button" aria-label="Previous month" onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))}><Icon name="chevron-left" size={14} /></button><b>{calendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</b><button type="button" aria-label="Next month" onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))}><Icon name="chevron-right" size={14} /></button></div>
               <div className="calendar-grid events-calendar-grid" role="group" aria-label="Filter events by date">{renderCalendarDays()}</div>
             </section>
-            <section className="dashboard-side-card quick-actions-card"><h2><Icon name="lightning" size={15} /> Quick actions</h2><Link to="/venues"><span className="quick-action-icon"><Icon name="venue" size={15} /></span><span><b>Browse venues</b><small>Find the perfect place to play</small></span><Icon name="arrow-right" size={13} /></Link><Link to="/teams"><span className="quick-action-icon"><Icon name="teams" size={15} /></span><span><b>Find teams</b><small>Connect with teams near you</small></span><Icon name="arrow-right" size={13} /></Link><button type="button" onClick={() => { setCreateError(''); setShowCreate(true) }}><span className="quick-action-icon"><Icon name="add" size={15} /></span><span><b>Create event</b><small>Host your own game or tournament</small></span><Icon name="arrow-right" size={13} /></button></section>
+            <section className="dashboard-side-card quick-actions-card"><h2><Icon name="lightning" size={15} /> Quick actions</h2><Link to="/venues"><span className="quick-action-icon"><Icon name="venue" size={15} /></span><span><b>Browse venues</b><small>Find the perfect place to play</small></span><Icon name="arrow-right" size={13} /></Link><Link to="/teams"><span className="quick-action-icon"><Icon name="teams" size={15} /></span><span><b>Find teams</b><small>Connect with teams near you</small></span><Icon name="arrow-right" size={13} /></Link><button type="button" onClick={beginCreateEvent}><span className="quick-action-icon"><Icon name="add" size={15} /></span><span><b>{user ? 'Create event' : 'Sign in to create event'}</b><small>Host your own game or tournament</small></span><Icon name="arrow-right" size={13} /></button></section>
             <section className="dashboard-side-card event-requests-card">
               <div className="dashboard-aside-heading"><h2><Icon name="teams" size={15} /> My team requests</h2>{user && user.id !== 'playlink-local-demo' && <span>{requests.filter((item) => item.status === 'pending').length} pending</span>}</div>
               {!user ? <p className="event-aside-empty">Sign in to see the requests your team has made.</p>
@@ -408,7 +416,7 @@ export default function EventsHub() {
                 <p className="events-calendar-month-summary"><Icon name="calendar" size={15} />{monthEventCount} {monthEventCount === 1 ? 'event' : 'events'} this month</p>
                 <h4>Events on this day</h4>
                 {selectedDayEvents.length ? <div className="events-calendar-event-list">{selectedDayEvents.map((event) => <Link key={event.id} to={`/events/${event.id}`} onClick={() => setFullCalendarOpen(false)}><span className={`events-calendar-event-sport ${event.sport_type}`}><Icon name={event.sport_type === 'cricket' ? 'cricket' : 'futsal'} size={15} /></span><span className="events-calendar-event-copy"><b>{event.title}</b><small><Icon name="clock" size={12} />{new Date(event.start_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</small><small><Icon name="pin" size={12} />{event.location_text}</small><small>{event.team_count}/{event.max_teams} teams · {Math.max(0, event.max_teams - event.team_count)} spots left</small></span><Icon name="arrow-right" size={14} /></Link>)}</div>
-                  : <div className="events-calendar-no-events"><span><Icon name="calendar" size={21} /></span><b>No events on this day</b><p>Select another date, or create an event for your community.</p><button type="button" className="button button-primary" onClick={() => { setFullCalendarOpen(false); setCreateError(''); setShowCreate(true) }}><Icon name="add" size={14} /> Create Event</button></div>}
+                  : <div className="events-calendar-no-events"><span><Icon name="calendar" size={21} /></span><b>No events on this day</b><p>Select another date, or create an event for your community.</p><button type="button" className="button button-primary" onClick={() => { setFullCalendarOpen(false); beginCreateEvent() }}><Icon name="add" size={14} /> {user ? 'Create Event' : 'Sign in to create'}</button></div>}
                 {nextScheduledEvent && <Link className="events-calendar-next-event" to={`/events/${nextScheduledEvent.id}`} onClick={() => setFullCalendarOpen(false)}><span>UP NEXT</span><b>{nextScheduledEvent.title}</b><small>{formatEventDate(nextScheduledEvent.start_time)}</small></Link>}
               </aside>
             </div>

@@ -28,10 +28,10 @@ export function gameInnings(game) {
   }).filter((inning) => inning.score)
 }
 
-async function invokeFootballMatchRequest(body, responseKey, fallbackMessage) {
+async function invokeMatchRequest(sport, body, responseKey, fallbackMessage) {
   if (!supabase) throw new Error('Match details need a configured Supabase connection.')
   const { data, error } = await supabase.functions.invoke('sportmonks-live-scores', {
-    body: { sport: 'football', ...body },
+    body: { sport, ...body },
   })
   if (error) {
     let message = error.message || fallbackMessage
@@ -50,11 +50,21 @@ async function invokeFootballMatchRequest(body, responseKey, fallbackMessage) {
 }
 
 export function fetchFootballMatchDetails(matchId) {
-  return invokeFootballMatchRequest({ matchId }, 'details', 'Football match details could not be loaded.')
+  return invokeMatchRequest('football', { matchId }, 'details', 'Football match details could not be loaded.')
+}
+
+export function fetchCricketMatchDetails(eventKey) {
+  return invokeMatchRequest(
+    'cricket',
+    { eventKey },
+    'details',
+    'Cricket match details could not be loaded.',
+  )
 }
 
 export function fetchFootballMatchSection(matchId, section, competitionId) {
-  return invokeFootballMatchRequest(
+  return invokeMatchRequest(
+    'football',
     { matchId, section, ...(competitionId ? { competitionId } : {}) },
     section,
     `Football ${section} could not be loaded.`,
